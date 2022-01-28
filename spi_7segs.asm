@@ -135,7 +135,7 @@ nbit2:	ld a,0f8h	; same as before, but this time output contents of e register
 
 	ld a,0fch	; raise CS
 	out (c),a
-	call delay	; short
+;	call delay	; short
 
 
 	pop de
@@ -143,24 +143,7 @@ nbit2:	ld a,0f8h	; same as before, but this time output contents of e register
 	pop af
 	ret
 
-; General purpose short delay loop
-
-delay: 	push af
-	push de
-	ld de,0100h
-
-inner:	dec de
-	ld a,d
-	or e
-	jr nz, inner
-
-	pop de
-	pop af
-	ret
-
-
-
-; General purpose longer delay loop
+; General purpose delay loop
 
 ldelay:	push af
 	push de

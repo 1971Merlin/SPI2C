@@ -20,7 +20,7 @@
 0020   2000 0E 42       start:	ld c,ioport
 0021   2002 3E FC       	ld a,0fch
 0022   2004 ED 79       	out (c),a
-0023   2006 CD 9A 20    	call ldelay	; pause to let display chip and SPI bus settle
+0023   2006 CD 8A 20    	call ldelay	; pause to let display chip and SPI bus settle
 0024   2009             
 0025   2009             
 0026   2009             
@@ -28,7 +28,7 @@
 0028   2009             
 0029   2009 3E 00       	ld a,00h
 0030   200B 06 10       	ld b,10h
-0031   200D 21 A7 20    	ld hl,dbuf
+0031   200D 21 97 20    	ld hl,dbuf
 0032   2010 77          fil:	ld (hl),a
 0033   2011 23          	inc hl
 0034   2012 3C          	inc a
@@ -54,7 +54,7 @@
 0054   2034             
 0055   2034             ; start of main loop
 0056   2034             
-0057   2034 21 A7 20    cycle:	ld hl,dbuf	; send the first 8 bytes of the display buffer to the SPI device
+0057   2034 21 97 20    cycle:	ld hl,dbuf	; send the first 8 bytes of the display buffer to the SPI device
 0058   2037 16 08       	ld d,8
 0059   2039 5E          out:	ld e,(hl)
 0060   203A CD 55 20    	call wr
@@ -66,16 +66,16 @@
 0066   2041             
 0067   2041             ; pause so we see something on MAX7219's displays
 0068   2041             
-0069   2041 CD 9A 20    	call ldelay
+0069   2041 CD 8A 20    	call ldelay
 0070   2044             
 0071   2044             
 0072   2044             ; rotate the display buffer contents to the left
 0073   2044             
-0074   2044 21 A7 20    	ld hl,dbuf	; HL = Source memory address = start of buffer +1
+0074   2044 21 97 20    	ld hl,dbuf	; HL = Source memory address = start of buffer +1
 0075   2047 7E          	ld a,(hl)	; backup 1st byte
 0076   2048 23          	inc hl		; and load into HL
 0077   2049             
-0078   2049 11 A7 20    	ld de,dbuf	; DE = Destination memory address = start of buffer
+0078   2049 11 97 20    	ld de,dbuf	; DE = Destination memory address = start of buffer
 0079   204C 01 0F 00    	ld bc,000fh	; loop 15 times
 0080   204F             
 0081   204F ED B0       	ldir		;  copy the byte at (HL) to (DE), bc times. Increment HL and DE after each byte is copied
@@ -135,51 +135,34 @@
 0135   2082             
 0136   2082 3E FC       	ld a,0fch	; raise CS
 0137   2084 ED 79       	out (c),a
-0138   2086 CD 8D 20    	call delay	; short
-0139   2089             
-0140   2089             
-0141   2089 D1          	pop de
-0142   208A C1          	pop bc
-0143   208B F1          	pop af
-0144   208C C9          	ret
-0145   208D             
-0146   208D             ; General purpose short delay loop
-0147   208D             
-0148   208D F5          delay: 	push af
-0149   208E D5          	push de
-0150   208F 11 00 01    	ld de,0100h
-0151   2092             
-0152   2092 1B          inner:	dec de
-0153   2093 7A          	ld a,d
-0154   2094 B3          	or e
-0155   2095 20 FB       	jr nz, inner
-0156   2097             
-0157   2097 D1          	pop de
-0158   2098 F1          	pop af
-0159   2099 C9          	ret
-0160   209A             
-0161   209A             
-0162   209A             
-0163   209A             ; General purpose longer delay loop
-0164   209A             
-0165   209A F5          ldelay:	push af
-0166   209B D5          	push de
-0167   209C 11 00 C0    	ld de,0c000h
-0168   209F             
-0169   209F 1B          linner:	dec de
-0170   20A0 7A          	ld a,d
-0171   20A1 B3          	or e
-0172   20A2 20 FB       	jr nz, linner
-0173   20A4             
-0174   20A4 D1          	pop de
-0175   20A5 F1          	pop af
-0176   20A6 C9          	ret
-0177   20A7             
-0178   20A7             
-0179   20A7             ; end of code, now comes our data region
-0180   20A7             
-0181   20A7             dbuf	.block 16		; reserve our 16 bytes of memory for the display buffer
-0182   20B7             
-0183   20B7             
-0184   20B7             	.end
+0138   2086             ;	call delay	; short
+0139   2086             
+0140   2086             
+0141   2086 D1          	pop de
+0142   2087 C1          	pop bc
+0143   2088 F1          	pop af
+0144   2089 C9          	ret
+0145   208A             
+0146   208A             ; General purpose delay loop
+0147   208A             
+0148   208A F5          ldelay:	push af
+0149   208B D5          	push de
+0150   208C 11 00 C0    	ld de,0c000h
+0151   208F             
+0152   208F 1B          linner:	dec de
+0153   2090 7A          	ld a,d
+0154   2091 B3          	or e
+0155   2092 20 FB       	jr nz, linner
+0156   2094             
+0157   2094 D1          	pop de
+0158   2095 F1          	pop af
+0159   2096 C9          	ret
+0160   2097             
+0161   2097             
+0162   2097             ; end of code, now comes our data region
+0163   2097             
+0164   2097             dbuf	.block 16		; reserve our 16 bytes of memory for the display buffer
+0165   20A7             
+0166   20A7             
+0167   20A7             	.end
 tasm: Number of errors = 0
