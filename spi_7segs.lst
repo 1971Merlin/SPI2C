@@ -1,0 +1,185 @@
+0001   0000             ; -----------------------------------------------------------------------------------------------
+0002   0000             ;
+0003   0000             ;	Test code for TEC SPI2C board and MAX7219
+0004   0000             ;
+0005   0000             ;	Uses a MAX7219 8-digit, 7-segment display; Duinotech XC-3714 or equivilant
+0006   0000             ;
+0007   0000             ; -----------------------------------------------------------------------------------------------
+0008   0000             
+0009   0000             
+0010   0000             
+0011   0000             ioport	.equ 42h	; IO port our SPI "controller" lives on; 42h for SC-1 using the onboard 74HC138
+0012   0000             
+0013   2000             	.org 2000h	; Start of code inRAM; 2000h for SC-1 or 0900 for TEC
+0014   2000             
+0015   2000             
+0016   2000             
+0017   2000             
+0018   2000             ; Initialize the SPI bus to an idle state; CS = 1, data and cLK = 0
+0019   2000             
+0020   2000 0E 42       start:	ld c,ioport
+0021   2002 3E FC       	ld a,0fch
+0022   2004 ED 79       	out (c),a
+0023   2006 CD 9A 20    	call ldelay	; pause to let display chip and SPI bus settle
+0024   2009             
+0025   2009             
+0026   2009             
+0027   2009             ; fill our display buffer in memory with some initial values - 00h to 15h
+0028   2009             
+0029   2009 3E 00       	ld a,00h
+0030   200B 06 10       	ld b,10h
+0031   200D 21 A7 20    	ld hl,dbuf
+0032   2010 77          fil:	ld (hl),a
+0033   2011 23          	inc hl
+0034   2012 3C          	inc a
+0035   2013 05          	dec b
+0036   2014 20 FA       	jr nz,fil
+0037   2016             
+0038   2016             
+0039   2016             
+0040   2016             ; configure MAX7219 registers
+0041   2016             
+0042   2016 11 FF 09    	ld de,09ffh	; Register 0x09 -- select decode mode enabled [enables display values 0123456789-EHLP and space; bit 7 = decimal point on]
+0043   2019 CD 55 20    	call wr
+0044   201C 11 0F 0A    	ld de,0a0fh	; Register 0x0A -- select max intensity of 0fh
+0045   201F CD 55 20    	call wr
+0046   2022 11 07 0B    	ld de,0b07h	; Register 0x0B --  enable digits 7-0 to be actively scanned
+0047   2025 CD 55 20    	call wr
+0048   2028 11 01 0C    	ld de,0c01h	; Register 0x0C -- enable normal operation (bit 0-1, normal operation; bit 0=0,shutdown mode)
+0049   202B CD 55 20    	call wr
+0050   202E 11 00 0F    	ld de,0f00h	; Register 0x0F -- disable display test
+0051   2031 CD 55 20    	call wr
+0052   2034             
+0053   2034             
+0054   2034             
+0055   2034             ; start of main loop
+0056   2034             
+0057   2034 21 A7 20    cycle:	ld hl,dbuf	; send the first 8 bytes of the display buffer to the SPI device
+0058   2037 16 08       	ld d,8
+0059   2039 5E          out:	ld e,(hl)
+0060   203A CD 55 20    	call wr
+0061   203D             
+0062   203D 23          	inc hl
+0063   203E 15          	dec d
+0064   203F 20 F8       	jr nz, out
+0065   2041             
+0066   2041             
+0067   2041             ; pause so we see something on MAX7219's displays
+0068   2041             
+0069   2041 CD 9A 20    	call ldelay
+0070   2044             
+0071   2044             
+0072   2044             ; rotate the display buffer contents to the left
+0073   2044             
+0074   2044 21 A7 20    	ld hl,dbuf	; HL = Source memory address = start of buffer +1
+0075   2047 7E          	ld a,(hl)	; backup 1st byte
+0076   2048 23          	inc hl		; and load into HL
+0077   2049             
+0078   2049 11 A7 20    	ld de,dbuf	; DE = Destination memory address = start of buffer
+0079   204C 01 0F 00    	ld bc,000fh	; loop 15 times
+0080   204F             
+0081   204F ED B0       	ldir		;  copy the byte at (HL) to (DE), bc times. Increment HL and DE after each byte is copied
+0082   2051             
+0083   2051 12          	ld (de),a	; drop in our first byte that we backed up, into the last display buffer location, which DE now points to
+0084   2052             
+0085   2052             
+0086   2052 C3 34 20    	jp cycle	; and loop infinately
+0087   2055             
+0088   2055             
+0089   2055             
+0090   2055             ; Routinte to transmit one byte to the SPI bus
+0091   2055             ;
+0092   2055             ; D = desired MAX7219 register to select
+0093   2055             ; E = byte to write to the rgister selected
+0094   2055             ;
+0095   2055             ;
+0096   2055             ; an SPI bus transaction consists of 16 bits clocked out to the SPI device each time CLK goes high (whilst CS is low) - the bit to be transmitted is the state of the MOSI bit
+0097   2055             ;
+0098   2055             ;
+0099   2055             
+0100   2055 F5          wr:	push af
+0101   2056 C5          	push bc
+0102   2057 D5          	push de
+0103   2058             
+0104   2058 0E 42       	ld c,ioport	; our I2C controller
+0105   205A 06 08       	ld b,8		; 8 bits
+0106   205C             
+0107   205C             
+0108   205C 3E F8       nbit:	ld a,0f8h	; Lower CS (and zero out bits 0 and 1 of A, ready for the following steps)
+0109   205E CB 02       	rlc d		; load next bit (from D register) into CF
+0110   2060 8F          	adc a,a		; load CF into A register, bit 0 - this sets the desired MOSI state
+0111   2061 ED 79       	out (c),a	; sede our data onto the SPI bus - we have not raised CLK yet so this gives time for the data to stabilise
+0112   2063 CB CF       	set 1,a		; set CLK High
+0113   2065 ED 79       	out (c),a
+0114   2067 3E 00       	ld a,00h	; set cLK low
+0115   2069 ED 79       	out (c),a
+0116   206B 05          	dec b		; loop 8 times = 8 bits
+0117   206C 20 EE       	jr nz, nbit
+0118   206E             
+0119   206E             
+0120   206E             ; at this point we have selected the desired registr, now send the desired data
+0121   206E             
+0122   206E 06 08       	ld b,8		; another 8 bits to send
+0123   2070             
+0124   2070 3E F8       nbit2:	ld a,0f8h	; same as before, but this time output contents of e register
+0125   2072 CB 03       	rlc e
+0126   2074 8F          	adc a,a
+0127   2075 ED 79       	out (c),a
+0128   2077 CB CF       	set 1,a
+0129   2079 ED 79       	out (c),a
+0130   207B 3E 00       	ld a,00h
+0131   207D ED 79       	out (c),a
+0132   207F 05          	dec b
+0133   2080 20 EE       	jr nz, nbit2
+0134   2082             
+0135   2082             
+0136   2082 3E FC       	ld a,0fch	; raise CS
+0137   2084 ED 79       	out (c),a
+0138   2086 CD 8D 20    	call delay	; short
+0139   2089             
+0140   2089             
+0141   2089 D1          	pop de
+0142   208A C1          	pop bc
+0143   208B F1          	pop af
+0144   208C C9          	ret
+0145   208D             
+0146   208D             ; General purpose short delay loop
+0147   208D             
+0148   208D F5          delay: 	push af
+0149   208E D5          	push de
+0150   208F 11 00 01    	ld de,0100h
+0151   2092             
+0152   2092 1B          inner:	dec de
+0153   2093 7A          	ld a,d
+0154   2094 B3          	or e
+0155   2095 20 FB       	jr nz, inner
+0156   2097             
+0157   2097 D1          	pop de
+0158   2098 F1          	pop af
+0159   2099 C9          	ret
+0160   209A             
+0161   209A             
+0162   209A             
+0163   209A             ; General purpose longer delay loop
+0164   209A             
+0165   209A F5          ldelay:	push af
+0166   209B D5          	push de
+0167   209C 11 00 C0    	ld de,0c000h
+0168   209F             
+0169   209F 1B          linner:	dec de
+0170   20A0 7A          	ld a,d
+0171   20A1 B3          	or e
+0172   20A2 20 FB       	jr nz, linner
+0173   20A4             
+0174   20A4 D1          	pop de
+0175   20A5 F1          	pop af
+0176   20A6 C9          	ret
+0177   20A7             
+0178   20A7             
+0179   20A7             ; end of code, now comes our data region
+0180   20A7             
+0181   20A7             dbuf	.block 16		; reserve our 16 bytes of memory for the display buffer
+0182   20B7             
+0183   20B7             
+0184   20B7             	.end
+tasm: Number of errors = 0
