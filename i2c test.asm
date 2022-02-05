@@ -3,7 +3,7 @@
 ;	Test code for TEC SPI2C board with MAX7219, DS1307 RTC
 ;
 ;	Uses a MAX7219 8-digit, 7-segment display; Duinotech XC-3714 or equivilant
-;	Uses a DS1307 RTC buard; Duinotech XC-4450 or equivilant
+;	Uses a DS1307 RTC board; Duinotech XC-4450 or equivilant
 ;
 ;	Designed to compile for the TEC-1 or SC-1 as the target machine
 ;
@@ -34,15 +34,22 @@ lc16b	.equ	0a0h
 #define SC1
 ;#define TEC1
 
+
 #ifdef SC1
 
 ; using i2cspi's onboard 74ls138 IO ports
 i2cport	.equ	40h
 spiport	.equ	42h
+
+; SC-1 7-seg ports
+disscan .equ	85h
+disseg	.equ	84h
+
 ; start address for SC-1 code
 	.org 2000h
 
 #endif
+
 
 
 #ifdef TEC1
@@ -50,6 +57,11 @@ spiport	.equ	42h
 ; using TEC's 74ls138 IO ports
 i2cport	.equ	06h
 spiport	.equ	07h
+
+; tec-1 7-seg ports
+disscan	.equ	01h
+disseg	.equ	02h
+
 ; start address for TEC code
 	.org 0900h
 
@@ -436,32 +448,25 @@ outerloop:
 
 scanloop:
 	ld a,(hl)	; output value
-
 	call conv7seg
-
-	out (84h),a
-
+	out (disseg),a
 	ld a,c		; turn on display
-	out (85h),a
-
+	out (disscan),a
 	ld b,80h
 on:	djnz on
 
 	ld a,00h	; turn off display
-	out (85h),a
-
-
+	out (disscan),a
 	ld b,20h
 off:	djnz off
 
 	inc hl
 	rrc c
-
 	jr nc,scanloop
 
 	ld a,00h	; turn off displays
-	out (84h),a
-	out (85h),a
+	out (disseg),a
+	out (disscan),a
 
 	ret
 
@@ -550,6 +555,7 @@ disp_buff:
 	.db 0fh
 	.db 0fh
 
+#ifdef SC1
 segs:
 	.db 3fh
 	.db 06h
@@ -561,6 +567,23 @@ segs:
 	.db 07h
 	.db 7fh
 	.db 6fh
+#endif
+
+
+#ifdef TEC1
+segs:
+	.db ebh
+	.db 28h
+	.db cdh
+	.db adh
+	.db 2eh
+	.db a7h
+	.db e7h
+	.db 29h
+	.db efh
+	.db 2fh
+#endif
+
 
 ; ----------------------------------------------------------------------------
 ; end of our code and data, end of program. goodbye!
