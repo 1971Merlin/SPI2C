@@ -1,0 +1,550 @@
+0001   0000             ; ----------------------------------------------------------------------------
+0002   0000             ; define global constants to the compiler
+0003   0000             ; ----------------------------------------------------------------------------
+0004   0000             
+0005   0000             ds1307	.equ	68h
+0006   0000             lc16b	.equ	0a0h
+0007   0000             
+0008   0000             
+0009   0000             ; ----------------------------------------------------------------------------
+0010   0000             ; conditional defines - set the target machine platform
+0011   0000             ; comment or un-commnt the following two lines to compile for target machine
+0012   0000             ; ----------------------------------------------------------------------------
+0013   0000             
+0014   0000             #define SC1
+0015   0000             ;#define TEC1
+0016   0000             
+0017   0000             #ifdef SC1
+0018   0000             
+0019   0000             ; using i2cspi's onboard 74ls138 IO ports
+0020   0000             i2cport	.equ	40h
+0021   0000             spiport	.equ	42h
+0022   0000             ; start address for SC-1 code
+0023   2000             	.org 2000h
+0024   2000             
+0025   2000             #endif
+0026   2000             
+0027   2000             
+0028   2000~            #ifdef TEC1
+0029   2000~            
+0030   2000~            ; using TEC's 74ls138 IO ports
+0031   2000~            i2cport	.equ	06h
+0032   2000~            spiport	.equ	07h
+0033   2000~            ; start address for TEC code
+0034   2000~            	.org 0900h
+0035   2000~            
+0036   2000             #endif
+0037   2000             
+0038   2000             ; ----------------------------------------------------------------------------
+0039   2000             ; hardware initialization code starts here
+0040   2000             ; ----------------------------------------------------------------------------
+0041   2000             
+0042   2000             ; reset i2c bus to idle state
+0043   2000 3E 03       	ld a,03h	; idle state = SCL and SDA both high
+0044   2002 0E 40       	ld c,i2cport
+0045   2004 ED 79       	out (c),a
+0046   2006             
+0047   2006             ; reset spi bus to idle state
+0048   2006 0E 42       	ld c,spiport	; reset CS = 1
+0049   2008 3E FC       	ld a,0fch	; Raise CS
+0050   200A ED 79       	out (c),a
+0051   200C CD D5 20    	call ldelay	; pause to establish stable state
+0052   200F             
+0053   200F             ; init SPI 7-seg dispay to required operational mode
+0054   200F 11 FF 09    	ld de,09ffh	; decode mode digits 7-0
+0055   2012 CD 98 21    	call spi_wr
+0056   2015 11 0F 0A    	ld de,0a0fh	; max brightness
+0057   2018 CD 98 21    	call spi_wr
+0058   201B 11 07 0B    	ld de,0b07h	; all 8 digits on
+0059   201E CD 98 21    	call spi_wr
+0060   2021 11 01 0C    	ld de,0c01h	; normal op
+0061   2024 CD 98 21    	call spi_wr
+0062   2027             
+0063   2027             
+0064   2027             ; ----------------------------------------------------------------------------
+0065   2027             ; main program loop
+0066   2027             ; read the clock from the i2c bus
+0067   2027             ; display the clock on the internal 7-seg's (for testing!)
+0068   2027             ; display the clock also on the i2c 7-seg module
+0069   2027             ; ----------------------------------------------------------------------------
+0070   2027             
+0071   2027             loop:
+0072   2027             
+0073   2027             ; ----------------------------------------------------------------------------
+0074   2027             ; read the DS1307 clock chip
+0075   2027             ; ----------------------------------------------------------------------------
+0076   2027             
+0077   2027             ; d = i2c address
+0078   2027             ; e = addres data
+0079   2027             ; hl = result storage
+0080   2027             
+0081   2027             ; reg 0
+0082   2027 21 CD 21    	ld hl,reg_buffer
+0083   202A 16 68       	ld d,ds1307	; i2c address
+0084   202C CB 02       	rlc d		; 7 bits only
+0085   202E CB 82       	res 0,d		; new bit zero = 0 = write
+0086   2030 1E 00       	ld e,00h	; e = register select
+0087   2032 CD E2 20    	call addr_set
+0088   2035             
+0089   2035             ; d = i2c address
+0090   2035             ; e = addres data
+0091   2035             ; hl = result storage
+0092   2035             
+0093   2035 21 CD 21    	ld hl,reg_buffer
+0094   2038 16 68       	ld d,ds1307	; i2c address
+0095   203A CB 02       	rlc d		; 7 bits only
+0096   203C CB C2       	set 0,d		; new bit zero = 1 = read
+0097   203E 1E 01       	ld e,1
+0098   2040 CD F0 20    	call reg_read
+0099   2043             
+0100   2043             ; reg 1
+0101   2043 21 CD 21    	ld hl,reg_buffer
+0102   2046 16 68       	ld d,ds1307	; i2c address
+0103   2048 CB 02       	rlc d		; 7 bits only
+0104   204A CB 82       	res 0,d		; new bit zero = 0 = write
+0105   204C 1E 01       	ld e,01h	; e = register select
+0106   204E CD E2 20    	call addr_set
+0107   2051             
+0108   2051 21 CD 21    	ld hl,reg_buffer
+0109   2054 23          	inc hl
+0110   2055 16 68       	ld d,ds1307	; i2c address
+0111   2057 CB 02       	rlc d		; 7 bits only
+0112   2059 CB C2       	set 0,d		; new bit zero = 1 = read
+0113   205B 1E 01       	ld e,1
+0114   205D CD F0 20    	call reg_read
+0115   2060             
+0116   2060             ; reg 2
+0117   2060             
+0118   2060 21 CD 21    	ld hl,reg_buffer
+0119   2063 16 68       	ld d,ds1307	; i2c address
+0120   2065 CB 02       	rlc d		; 7 bits only
+0121   2067 CB 82       	res 0,d		; new bit zero = 0 = write
+0122   2069 1E 02       	ld e,02h	; e = register select
+0123   206B CD E2 20    	call addr_set
+0124   206E             
+0125   206E             
+0126   206E 21 CD 21    	ld hl,reg_buffer
+0127   2071 23          	inc hl
+0128   2072 23          	inc hl
+0129   2073 16 68       	ld d,ds1307	; i2c address
+0130   2075 CB 02       	rlc d		; 7 bits only
+0131   2077 CB C2       	set 0,d		; new bit zero = 1 = read
+0132   2079 1E 01       	ld e,1
+0133   207B CD F0 20    	call reg_read
+0134   207E             
+0135   207E             
+0136   207E             
+0137   207E             
+0138   207E             ; process the clock chip's data into the display buffer
+0139   207E             
+0140   207E 21 CD 21    	ld hl,reg_buffer	; src
+0141   2081 11 D5 21    	ld de,disp_buff		; dest (to be filled right to left, so start at the end)
+0142   2084 13          	inc de
+0143   2085 13          	inc de
+0144   2086 13          	inc de
+0145   2087 13          	inc de
+0146   2088 13          	inc de
+0147   2089 13          	inc de
+0148   208A             
+0149   208A             ;secs
+0150   208A 7E          	ld a,(hl)
+0151   208B E6 0F       	and 0fh
+0152   208D 12          	ld (de),a
+0153   208E 1B          	dec de
+0154   208F             
+0155   208F             ; 10s secs
+0156   208F 7E          	ld a,(hl)
+0157   2090 E6 70       	and 070h
+0158   2092 CB 0F       	rrc a
+0159   2094 CB 0F       	rrc a
+0160   2096 CB 0F       	rrc a
+0161   2098 CB 0F       	rrc a
+0162   209A 12          	ld (de),a
+0163   209B 1B          	dec de
+0164   209C             
+0165   209C             ; next register
+0166   209C 23          	inc hl
+0167   209D             
+0168   209D             ;mins
+0169   209D 7E          	ld a,(hl)
+0170   209E E6 0F       	and 0fh
+0171   20A0 12          	ld (de),a
+0172   20A1 1B          	dec de
+0173   20A2             
+0174   20A2             ; 10s mins
+0175   20A2 7E          	ld a,(hl)
+0176   20A3 E6 70       	and 070h
+0177   20A5 CB 0F       	rrc a
+0178   20A7 CB 0F       	rrc a
+0179   20A9 CB 0F       	rrc a
+0180   20AB CB 0F       	rrc a
+0181   20AD 12          	ld (de),a
+0182   20AE 1B          	dec de
+0183   20AF             
+0184   20AF             ; next register
+0185   20AF 23          	inc hl
+0186   20B0             
+0187   20B0             ; hours
+0188   20B0 7E          	ld a,(hl)
+0189   20B1 E6 0F       	and 0fh
+0190   20B3 12          	ld (de),a
+0191   20B4 1B          	dec de
+0192   20B5             
+0193   20B5             ; 10s hours
+0194   20B5 7E          	ld a,(hl)
+0195   20B6 E6 30       	and 030h
+0196   20B8 CB 0F       	rrc a
+0197   20BA CB 0F       	rrc a
+0198   20BC CB 0F       	rrc a
+0199   20BE CB 0F       	rrc a
+0200   20C0 12          	ld (de),a
+0201   20C1 1B          	dec de
+0202   20C2             
+0203   20C2             ; put display buffer contents on internal display
+0204   20C2 CD 62 21    	call scan_7seg
+0205   20C5             
+0206   20C5             ; put display buffer contents on SPI 7-seg
+0207   20C5             
+0208   20C5             SPIcycle:
+0209   20C5 21 D5 21    	ld hl,disp_buff
+0210   20C8 16 08       	ld d,8
+0211   20CA 5E          out:	ld e,(hl)
+0212   20CB CD 98 21    	call spi_wr
+0213   20CE             
+0214   20CE 23          	inc hl
+0215   20CF 15          	dec d
+0216   20D0 20 F8       	jr nz, out
+0217   20D2             
+0218   20D2             
+0219   20D2             ; and do it again!
+0220   20D2 C3 27 20    	jp loop
+0221   20D5             
+0222   20D5             
+0223   20D5             
+0224   20D5             
+0225   20D5             
+0226   20D5             ; ----------------------------------------------------------------------------
+0227   20D5             ; General purpose delay loop
+0228   20D5             ; ----------------------------------------------------------------------------
+0229   20D5 F5          ldelay:	push af
+0230   20D6 D5          	push de
+0231   20D7 11 00 C0    	ld de,0c000h
+0232   20DA             
+0233   20DA 1B          linner:	dec de
+0234   20DB 7A          	ld a,d
+0235   20DC B3          	or e
+0236   20DD 20 FB       	jr nz, linner
+0237   20DF             
+0238   20DF D1          	pop de
+0239   20E0 F1          	pop af
+0240   20E1 C9          	ret
+0241   20E2             
+0242   20E2             
+0243   20E2             ; ----------------------------------------------------------------------------
+0244   20E2             ; set the i2c address onto the i2c bus
+0245   20E2             ; ----------------------------------------------------------------------------
+0246   20E2             ; d = i2c address
+0247   20E2             ; e = address to set register pointer to
+0248   20E2             ; hl = place to store result
+0249   20E2             
+0250   20E2             addr_set:
+0251   20E2             
+0252   20E2 CD 02 21    	call i2c_start
+0253   20E5             
+0254   20E5 CD 18 21    	call i2c_txbyte
+0255   20E8             ;	push de		; store result
+0256   20E8             
+0257   20E8 53          	ld d,e		; second byte
+0258   20E9             
+0259   20E9 CD 18 21    	call i2c_txbyte
+0260   20EC             ;	push de		; store result
+0261   20EC             
+0262   20EC CD 0D 21    	call i2c_stop
+0263   20EF             
+0264   20EF C9          	ret
+0265   20F0             
+0266   20F0             
+0267   20F0             
+0268   20F0             
+0269   20F0             
+0270   20F0             
+0271   20F0             ; ----------------------------------------------------------------------------
+0272   20F0             ; read data from the i2c bus
+0273   20F0             ; ----------------------------------------------------------------------------
+0274   20F0             
+0275   20F0             ; d = i2c address, then read data
+0276   20F0             ; e = number of bytes to read
+0277   20F0             ; hl = place to store rsult
+0278   20F0             
+0279   20F0             reg_read:
+0280   20F0             
+0281   20F0 CD 02 21    	call i2c_start
+0282   20F3 CD 18 21    	call i2c_txbyte
+0283   20F6             rloop:
+0284   20F6 CD 3A 21    	call i2c_rxbyte
+0285   20F9             
+0286   20F9 72          	ld (hl),d	; store result
+0287   20FA 23          	inc hl
+0288   20FB 1D          	dec e
+0289   20FC 20 F8       	jr nz, rloop
+0290   20FE             
+0291   20FE CD 0D 21    	call i2c_stop
+0292   2101             
+0293   2101 C9          	ret
+0294   2102             
+0295   2102             
+0296   2102             
+0297   2102             
+0298   2102             
+0299   2102             ; ----------------------------------------------------------------------------
+0300   2102             ; make the i2c bus active
+0301   2102             ; ----------------------------------------------------------------------------
+0302   2102             
+0303   2102             i2c_start:
+0304   2102             
+0305   2102 0E 40       	ld c,i2cport
+0306   2104 3E 02       	ld a,02h	; SCL 1, SDA 0
+0307   2106 ED 79       	out (c),a
+0308   2108 3E 00       	ld a,00h
+0309   210A ED 79       	out (c),a	; SCL 0, ADA 0
+0310   210C C9          	ret
+0311   210D             
+0312   210D             ; ----------------------------------------------------------------------------
+0313   210D             ; return i2c bus to idle
+0314   210D             ; ----------------------------------------------------------------------------
+0315   210D             
+0316   210D             i2c_stop:
+0317   210D             
+0318   210D 0E 40       	ld c,i2cport
+0319   210F 3E 01       	ld a,01h	; SCL 0, SDA 1
+0320   2111 ED 79       	out (c),a
+0321   2113 3E 03       	ld a,03h
+0322   2115 ED 79       	out (c),a	; SCL 1, ADA 1
+0323   2117 C9          	ret
+0324   2118             
+0325   2118             
+0326   2118             ; ----------------------------------------------------------------------------
+0327   2118             ; transmit a byte on the i2c bus
+0328   2118             ; ----------------------------------------------------------------------------
+0329   2118             
+0330   2118             i2c_txbyte:
+0331   2118             
+0332   2118             ; enter  d = byte to send
+0333   2118             ; return d = result
+0334   2118             
+0335   2118 0E 40       	ld c,i2cport
+0336   211A 06 08       	ld b,8		; 8 bits
+0337   211C             
+0338   211C             txbyte1:
+0339   211C 3E 00       	ld a,00h	; prep CL=low, data = high
+0340   211E CB 02       	rlc d		; set CF = data
+0341   2120 8F          	adc a,a		; set bit 0 to our data
+0342   2121 ED 79       	out (c),a	; SDA=data, SCL = 0
+0343   2123             
+0344   2123 CB CF       	set 1,a		; Pulse SCL high
+0345   2125 ED 79       	out (c),a
+0346   2127 CB 8F       	res 1,a
+0347   2129 ED 79       	out (c),a
+0348   212B             
+0349   212B 05          	dec b
+0350   212C 20 EE       	jr nz, txbyte1
+0351   212E             
+0352   212E             ; get ACK since we did a set address command -- if the device is there we should get an answer bit = 0
+0353   212E             
+0354   212E 3E 03       	ld a,03h	; SET SCL = 1 (leave data high == bus free for response)
+0355   2130 ED 79       	out (c),a
+0356   2132 ED 78       	in a,(c)	;get result; 0 = response received
+0357   2134 57          	ld d,a		; store d=result
+0358   2135 3E 01       	ld a,01h	; SCL = 0, SDA = 1
+0359   2137 ED 79       	out (c),a
+0360   2139             
+0361   2139 C9          	ret
+0362   213A             
+0363   213A             
+0364   213A             ; ----------------------------------------------------------------------------
+0365   213A             ; read a byte form the i2c bus
+0366   213A             ; return d = result
+0367   213A             ; ----------------------------------------------------------------------------
+0368   213A             
+0369   213A             i2c_rxbyte:
+0370   213A             
+0371   213A 0E 40       	ld c,i2cport
+0372   213C 06 08       	ld b,8		; 8 bits
+0373   213E 16 00       	ld d,00h	; (our data to be read)
+0374   2140             
+0375   2140             
+0376   2140             rxbyte1:
+0377   2140 3E 01       	ld a,01h	; prep SCL=low, data = high (tristate output)
+0378   2142 ED 79       	out (c),a	; SDA=data, SCL = 0
+0379   2144             
+0380   2144 3E 03       	ld a,03h	; SCL = 1, SDA = 1
+0381   2146 ED 79       	out (c),a
+0382   2148             
+0383   2148 ED 78       	in a,(c)	; read bit (they send us SDA)
+0384   214A CB 0F       	rrc a		; store into CF
+0385   214C CB 12       	rl d		; and read into d
+0386   214E             
+0387   214E 3E 01       	ld a,01h
+0388   2150 ED 79       	out (c),a	; SCL = 0, SDA = 1 (tristate output)
+0389   2152             
+0390   2152 05          	dec b
+0391   2153 20 EB       	jr nz, rxbyte1
+0392   2155             
+0393   2155             ; send aCK since we read a byte
+0394   2155             
+0395   2155             
+0396   2155 3E 01       ack:	ld a,01h	; Send ACL pulse clock with D=1
+0397   2157 ED 79       	out (c),a
+0398   2159 3E 03       	ld a,03h	; SCL = 1, SDA = 1
+0399   215B ED 79       	out (c),a
+0400   215D 3E 01       	ld a,01h	; lower SCL
+0401   215F ED 79       	out (c),a
+0402   2161             
+0403   2161 C9          	ret
+0404   2162             
+0405   2162             
+0406   2162             ; ----------------------------------------------------------------------------
+0407   2162             ; utility routine to scan the internal 7-seg displays
+0408   2162             ; ----------------------------------------------------------------------------
+0409   2162             
+0410   2162             scan_7seg:
+0411   2162             
+0412   2162             outerloop:
+0413   2162 0E 20       	ld c,020h
+0414   2164 21 D5 21    	ld hl,disp_buff
+0415   2167 23          	inc hl
+0416   2168             
+0417   2168             scanloop:
+0418   2168 7E          	ld a,(hl)	; output value
+0419   2169             
+0420   2169 CD 89 21    	call conv7seg
+0421   216C             
+0422   216C D3 84       	out (84h),a
+0423   216E             
+0424   216E 79          	ld a,c		; turn on display
+0425   216F D3 85       	out (85h),a
+0426   2171             
+0427   2171 06 80       	ld b,80h
+0428   2173 10 FE       on:	djnz on
+0429   2175             
+0430   2175 3E 00       	ld a,00h	; turn off display
+0431   2177 D3 85       	out (85h),a
+0432   2179             
+0433   2179             
+0434   2179 06 20       	ld b,20h
+0435   217B 10 FE       off:	djnz off
+0436   217D             
+0437   217D 23          	inc hl
+0438   217E CB 09       	rrc c
+0439   2180             
+0440   2180 30 E6       	jr nc,scanloop
+0441   2182             
+0442   2182 3E 00       	ld a,00h	; turn off displays
+0443   2184 D3 84       	out (84h),a
+0444   2186 D3 85       	out (85h),a
+0445   2188             
+0446   2188 C9          	ret
+0447   2189             
+0448   2189             
+0449   2189             conv7seg:
+0450   2189 C5          	PUSH	BC
+0451   218A E5          	PUSH	HL
+0452   218B 21 DD 21    	LD	HL,segs
+0453   218E E6 0F       	AND	0fh	;TO INDEX TO THE
+0454   2190 4F          	LD	C,A	;THE SEVEN SEGMENT
+0455   2191 06 00       	LD	B,00h	;CODE FOR THAT VALUE
+0456   2193 09          	ADD	HL,BC	;AND RETURN WITH
+0457   2194 7E          	LD	A,(HL)	;CODE IN A
+0458   2195 E1          	POP	HL
+0459   2196 C1          	POP	BC
+0460   2197 C9          	RET
+0461   2198             
+0462   2198             ; ----------------------------------------------------------------------------
+0463   2198             ; write to the SPI bus
+0464   2198             ; call with de = comand, data bytes to write
+0465   2198             ; ----------------------------------------------------------------------------
+0466   2198             
+0467   2198 F5          spi_wr:	push af
+0468   2199 C5          	push bc
+0469   219A D5          	push de
+0470   219B             
+0471   219B 0E 42       	ld c,spiport
+0472   219D 06 08       	ld b,8
+0473   219F             
+0474   219F             
+0475   219F 3E F8       nbit:	ld a,0f8h	; set 3 lines low
+0476   21A1 CB 02       	rlc d		; next bit into CF
+0477   21A3 8F          	adc a,a		; Add Data bit 0
+0478   21A4 ED 79       	out (c),a	; set data
+0479   21A6 CB CF       	set 1,a		; set CLK High
+0480   21A8 ED 79       	out (c),a
+0481   21AA 3E 00       	ld a,00h	; set cLK low
+0482   21AC ED 79       	out (c),a
+0483   21AE 05          	dec b
+0484   21AF 20 EE       	jr nz, nbit
+0485   21B1             
+0486   21B1 06 08       	ld b,8
+0487   21B3             
+0488   21B3 3E 78       nbit2:	ld a,078h
+0489   21B5 CB 03       	rlc e
+0490   21B7 8F          	adc a,a
+0491   21B8 ED 79       	out (c),a
+0492   21BA CB CF       	set 1,a
+0493   21BC ED 79       	out (c),a
+0494   21BE 3E 00       	ld a,00h
+0495   21C0 ED 79       	out (c),a
+0496   21C2 05          	dec b
+0497   21C3 20 EE       	jr nz, nbit2
+0498   21C5             
+0499   21C5             
+0500   21C5 3E FC       	ld a,0fch	; raise CS
+0501   21C7 ED 79       	out (c),a
+0502   21C9             
+0503   21C9 D1          	pop de
+0504   21CA C1          	pop bc
+0505   21CB F1          	pop af
+0506   21CC C9          	ret
+0507   21CD             
+0508   21CD             
+0509   21CD             ; ----------------------------------------------------------------------------
+0510   21CD             ;	data, variables, etc.
+0511   21CD             ; ----------------------------------------------------------------------------
+0512   21CD             
+0513   21CD             reg_buffer:
+0514   21CD 00          	.db 0
+0515   21CE 00          	.db 0
+0516   21CF 00          	.db 0
+0517   21D0 00          	.db 0
+0518   21D1 00          	.db 0
+0519   21D2 00          	.db 0
+0520   21D3 00          	.db 0
+0521   21D4 00          	.db 0
+0522   21D5             
+0523   21D5             disp_buff:
+0524   21D5 0F          	.db 0fh
+0525   21D6 0F          	.db 0fh
+0526   21D7 0F          	.db 0fh
+0527   21D8 0F          	.db 0fh
+0528   21D9 0F          	.db 0fh
+0529   21DA 0F          	.db 0fh
+0530   21DB 0F          	.db 0fh
+0531   21DC 0F          	.db 0fh
+0532   21DD             
+0533   21DD             segs:
+0534   21DD 3F          	.db 3fh
+0535   21DE 06          	.db 06h
+0536   21DF 5B          	.db 5bh
+0537   21E0 4F          	.db 4fh
+0538   21E1 66          	.db 66h
+0539   21E2 6D          	.db 6dh
+0540   21E3 7D          	.db 7dh
+0541   21E4 07          	.db 07h
+0542   21E5 7F          	.db 7fh
+0543   21E6 6F          	.db 6fh
+0544   21E7             
+0545   21E7             ; ----------------------------------------------------------------------------
+0546   21E7             ; end of our code and data, end of program. goodbye!
+0547   21E7             ; ----------------------------------------------------------------------------
+0548   21E7             
+0549   21E7             	.end
+tasm: Number of errors = 0
