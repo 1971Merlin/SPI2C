@@ -4,6 +4,12 @@
 ;
 ;	Uses a MAX7219 8-digit, 7-segment display; Duinotech XC-3714 or equivilant
 ;
+;	Assemble with TASM using the command line options -80 -g0
+;
+;	Copyright (C) 2022, Craig Hart. Distributed under the GPLv3 license
+;
+;	https://github.com/1971Merlin/SPI2C
+;
 ; -----------------------------------------------------------------------------------------------
 
 
