@@ -45,6 +45,9 @@ spiport	.equ	42h
 disscan .equ	85h
 disseg	.equ	84h
 
+; keyboard port
+keyport	.equ	86h
+
 ; start address for SC-1 code
 	.org 2000h
 
@@ -61,6 +64,10 @@ spiport	.equ	07h
 ; tec-1 7-seg ports
 disscan	.equ	01h
 disseg	.equ	02h
+
+; keyboard port
+keyport	.equ	00h
+
 
 ; start address for TEC code
 	.org 0900h
@@ -102,155 +109,49 @@ disseg	.equ	02h
 
 loop:
 
-; ----------------------------------------------------------------------------
-; read the DS1307 clock chip
-; ----------------------------------------------------------------------------
+	call rd1307	; Read DS1387 registers
 
-; d = i2c address
-; e = addres data
-; hl = result storage
+	call convdata	; Convert DS1387 data to TEC format
 
-; reg 0
-	ld hl,reg_buffer
-	ld d,ds1307	; i2c address
-	rlc d		; 7 bits only
-	res 0,d		; new bit zero = 0 = write
-	ld e,00h	; e = register select
-	call addr_set
+	call scan_7seg	; put display buffer contents on internal display
 
-; d = i2c address
-; e = addres data
-; hl = result storage
+	call maxout	; Put display buffer contents on MAX7219 7-segs
 
-	ld hl,reg_buffer
-	ld d,ds1307	; i2c address
-	rlc d		; 7 bits only
-	set 0,d		; new bit zero = 1 = read
-	ld e,1
-	call reg_read
+	call pollkey	; get a key
+	cp 0ffh
+	jr z, loop
 
-; reg 1
-	ld hl,reg_buffer
-	ld d,ds1307	; i2c address
-	rlc d		; 7 bits only
-	res 0,d		; new bit zero = 0 = write
-	ld e,01h	; e = register select
-	call addr_set
-
-	ld hl,reg_buffer
-	inc hl
-	ld d,ds1307	; i2c address
-	rlc d		; 7 bits only
-	set 0,d		; new bit zero = 1 = read
-	ld e,1
-	call reg_read
-
-; reg 2
-
-	ld hl,reg_buffer
-	ld d,ds1307	; i2c address
-	rlc d		; 7 bits only
-	res 0,d		; new bit zero = 0 = write
-	ld e,02h	; e = register select
-	call addr_set
+; OK pressing a key
 
 
-	ld hl,reg_buffer
-	inc hl
-	inc hl
-	ld d,ds1307	; i2c address
-	rlc d		; 7 bits only
-	set 0,d		; new bit zero = 1 = read
-	ld e,1
-	call reg_read
+	ld a,(mode)
+	xor 80h
+	ld (mode),a
+
+loop2	call pollkey	; get a key
+	cp 0ffh
+	jr nz, loop2
 
 
 
-
-; process the clock chip's data into the display buffer
-
-	ld hl,reg_buffer	; src
-	ld de,disp_buff		; dest (to be filled right to left, so start at the end)
-	inc de
-	inc de
-	inc de
-	inc de
-	inc de
-	inc de
-
-;secs
-	ld a,(hl)
-	and 0fh
-	ld (de),a
-	dec de
-
-; 10s secs
-	ld a,(hl)
-	and 070h
-	rrc a
-	rrc a
-	rrc a
-	rrc a
-	ld (de),a
-	dec de
-
-; next register
-	inc hl
-
-;mins
-	ld a,(hl)
-	and 0fh
-	ld (de),a
-	dec de
-
-; 10s mins
-	ld a,(hl)
-	and 070h
-	rrc a
-	rrc a
-	rrc a
-	rrc a
-	ld (de),a
-	dec de
-
-; next register
-	inc hl
-
-; hours
-	ld a,(hl)
-	and 0fh
-	ld (de),a
-	dec de
-
-; 10s hours
-	ld a,(hl)
-	and 030h
-	rrc a
-	rrc a
-	rrc a
-	rrc a
-	ld (de),a
-	dec de
-
-; put display buffer contents on internal display
-	call scan_7seg
-
-; put display buffer contents on SPI 7-seg
-
-SPIcycle:
-	ld hl,disp_buff
-	ld d,8
-out:	ld e,(hl)
-	call spi_wr
-
-	inc hl
-	dec d
-	jr nz, out
-
-
-; and do it again!
 	jp loop
 
+
+; ----------------------------------------------------------------------------
+; poll keyboard
+;
+; returns a=0ffh if no key, otherwise value read
+; ----------------------------------------------------------------------------
+
+pollkey:
+	in a,(keyport)
+	bit 5,a
+	jr nz, key
+	ld a,0ffh
+	ret
+
+key:	and 1fh
+	ret
 
 
 
@@ -273,58 +174,41 @@ linner:	dec de
 
 
 ; ----------------------------------------------------------------------------
-; set the i2c address onto the i2c bus
+; set the i2c device address onto the i2c bus
 ; ----------------------------------------------------------------------------
 ; d = i2c address
 ; e = address to set register pointer to
-; hl = place to store result
 
-addr_set:
-
+i2c_write:
+	push de
 	call i2c_start
-
 	call i2c_txbyte
-;	push de		; store result
-
 	ld d,e		; second byte
-
 	call i2c_txbyte
-;	push de		; store result
-
 	call i2c_stop
-
+	pop de
 	ret
 
 
 
-
-
-
 ; ----------------------------------------------------------------------------
-; read data from the i2c bus
+; read data from the i2c bus; send an address, receive a result
 ; ----------------------------------------------------------------------------
 
 ; d = i2c address, then read data
-; e = number of bytes to read
-; hl = place to store rsult
+; hl = place to store result
 
-reg_read:
-
+i2c_read:
+	push de
 	call i2c_start
 	call i2c_txbyte
-rloop:
-	call i2c_rxbyte
 
+	call i2c_rxbyte
 	ld (hl),d	; store result
-	inc hl
-	dec e
-	jr nz, rloop
 
 	call i2c_stop
-
+	pop de
 	ret
-
-
 
 
 
@@ -333,12 +217,15 @@ rloop:
 ; ----------------------------------------------------------------------------
 
 i2c_start:
-
+	push af
+	push bc
 	ld c,i2cport
 	ld a,02h	; SCL 1, SDA 0
 	out (c),a
 	ld a,00h
 	out (c),a	; SCL 0, ADA 0
+	pop bc
+	pop af
 	ret
 
 ; ----------------------------------------------------------------------------
@@ -346,23 +233,30 @@ i2c_start:
 ; ----------------------------------------------------------------------------
 
 i2c_stop:
-
+	push af
+	push bc
 	ld c,i2cport
 	ld a,01h	; SCL 0, SDA 1
 	out (c),a
 	ld a,03h
 	out (c),a	; SCL 1, ADA 1
+	pop bc
+	pop af
 	ret
 
 
 ; ----------------------------------------------------------------------------
 ; transmit a byte on the i2c bus
+;
+; enter  d = byte to send
+; return d = result
 ; ----------------------------------------------------------------------------
+
 
 i2c_txbyte:
 
-; enter  d = byte to send
-; return d = result
+	push af
+	push bc
 
 	ld c,i2cport
 	ld b,8		; 8 bits
@@ -390,15 +284,21 @@ txbyte1:
 	ld a,01h	; SCL = 0, SDA = 1
 	out (c),a
 
+	pop bc
+	pop af
 	ret
 
 
 ; ----------------------------------------------------------------------------
-; read a byte form the i2c bus
+; receive a byte from the i2c bus
+;
 ; return d = result
 ; ----------------------------------------------------------------------------
 
 i2c_rxbyte:
+
+	push af
+	push bc
 
 	ld c,i2cport
 	ld b,8		; 8 bits
@@ -432,6 +332,8 @@ ack:	ld a,01h	; Send ACL pulse clock with D=1
 	ld a,01h	; lower SCL
 	out (c),a
 
+	pop bc
+	pop af
 	ret
 
 
@@ -440,6 +342,9 @@ ack:	ld a,01h	; Send ACL pulse clock with D=1
 ; ----------------------------------------------------------------------------
 
 scan_7seg:
+	push af
+	push bc
+	push hl
 
 outerloop:
 	ld c,020h
@@ -452,12 +357,12 @@ scanloop:
 	out (disseg),a
 	ld a,c		; turn on display
 	out (disscan),a
-	ld b,80h
+	ld b,0c0h
 on:	djnz on
 
 	ld a,00h	; turn off display
 	out (disscan),a
-	ld b,20h
+	ld b,18h
 off:	djnz off
 
 	inc hl
@@ -468,6 +373,9 @@ off:	djnz off
 	out (disseg),a
 	out (disscan),a
 
+	pop hl
+	pop bc
+	pop af
 	ret
 
 
@@ -486,7 +394,9 @@ conv7seg:
 
 ; ----------------------------------------------------------------------------
 ; write to the SPI bus
-; call with de = comand, data bytes to write
+;
+; d = command
+; e = data byte
 ; ----------------------------------------------------------------------------
 
 spi_wr:	push af
@@ -532,18 +442,122 @@ nbit2:	ld a,078h
 
 
 ; ----------------------------------------------------------------------------
+; read the DS1307 clock chip
+; ----------------------------------------------------------------------------
+
+rd1307:
+	ld hl,reg_buffer
+	ld b,7		; 7 bytes to read
+	ld e,0		; starting from reg 0
+
+
+lp1307:	ld d,ds1307	; i2c address
+	rlc d		; 7 bits only
+	res 0,d		; new bit zero = 0 = write
+	call i2c_write
+
+	ld d,ds1307	; i2c address
+	rlc d		; 7 bits only
+	set 0,d		; new bit zero = 1 = read
+	call i2c_read
+
+	inc e
+	inc hl
+	djnz lp1307
+
+	ret
+
+
+
+; ----------------------------------------------------------------------------
+; process the clock chip's raw data into the display buffer format
+; ----------------------------------------------------------------------------
+
+convdata:
+	ld hl,reg_buffer	; src
+
+	ld a,(mode)
+	bit 7,a
+
+	jr nz, conv2
+
+	inc hl			; move to D/M/Y
+	inc hl
+	inc hl
+	inc hl
+
+
+
+
+conv2:	ld de,disp_buff		; dest (to be filled right to left)
+	inc de
+	inc de
+	inc de
+	inc de
+	inc de
+	inc de
+	ld a,00h
+
+;secs / date
+	rrd
+	ld (de),a
+	dec de
+	rrd
+	ld (de),a
+	dec de
+
+;mins / month
+	inc hl
+	rrd
+	ld (de),a
+	dec de
+	rrd
+	ld (de),a
+	dec de
+
+; hours / year
+	inc hl
+	rrd
+	ld (de),a
+	dec de
+	rrd
+	ld (de),a
+	dec de
+
+	ret
+
+
+
+; ----------------------------------------------------------------------------
+; Send the contents of the display buffer to the MAX7219 chip
+; ----------------------------------------------------------------------------
+
+maxout:	ld hl,disp_buff
+	ld d,8
+
+lout:	ld e,(hl)
+	call spi_wr
+	inc hl
+	dec d
+	jr nz, lout
+
+	ret
+
+
+
+
+; ----------------------------------------------------------------------------
 ;	data, variables, etc.
 ; ----------------------------------------------------------------------------
 
 reg_buffer:
-	.db 0
-	.db 0
-	.db 0
-	.db 0
-	.db 0
-	.db 0
-	.db 0
-	.db 0
+	.db 00h
+	.db 00h
+	.db 00h
+	.db 00h
+	.db 00h
+	.db 00h
+	.db 00h
 
 disp_buff:
 	.db 0fh
@@ -554,6 +568,8 @@ disp_buff:
 	.db 0fh
 	.db 0fh
 	.db 0fh
+
+mode:	.db 80h
 
 #ifdef SC1
 segs:
