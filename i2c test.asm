@@ -1,8 +1,8 @@
-; -----------------------------------------------------------------------------------------------
+; ----------------------------------------------------------------------------
 ;
 ;	Test code for TEC SPI2C board with MAX7219, DS1307 RTC
 ;
-;	Uses a MAX7219 8-digit, 7-segment display; Duinotech XC-3714 or equivilant
+;	Uses a MAX7219 8-digit, 7-segment display; Duinotech XC-3714 or equiv.
 ;	Uses a DS1307 RTC board; Duinotech XC-4450 or equivilant
 ;
 ;	Designed to compile for the TEC-1 or SC-1 as the target machine
@@ -13,8 +13,7 @@
 ;
 ;	https://github.com/1971Merlin/SPI2C
 ;
-; -----------------------------------------------------------------------------------------------
-
+; ----------------------------------------------------------------------------
 
 
 
@@ -32,6 +31,7 @@ lc16b	.equ	0a0h
 
 #define SC1
 ;#define TEC1
+
 
 
 #ifdef SC1
@@ -73,6 +73,7 @@ keyport	.equ	00h
 
 #endif
 
+
 ; ----------------------------------------------------------------------------
 ; hardware initialization code starts here
 ; ----------------------------------------------------------------------------
@@ -111,58 +112,87 @@ keyport	.equ	00h
 ; ----------------------------------------------------------------------------
 
 loop:
-
 	call rd1307	; Read DS1387 registers
-
 	call convdata	; Convert DS1387 data to TEC format
-
 	call scan_7seg	; put display buffer contents on internal display
-
 	call maxout	; Put display buffer contents on MAX7219 7-segs
-
-	call pollkey	; get a key
-	cp 0ffh
-	jr z, loop
-
-; OK pressing a key
-
-
-	ld a,(mode)
-	xor 80h
-	ld (mode),a
-
-loop2	call pollkey	; get a key
-	cp 0ffh
-	jr nz, loop2
-
-
+	call pollkey	; sample keyboard state
+	call handlekey	; process a keystroke, if any
 
 	jp loop
 
 
 ; ----------------------------------------------------------------------------
-; poll keyboard
+; handle key; check buffer fora keystroke and do something if found
+; ----------------------------------------------------------------------------
+
+handlekey:
+	push af
+
+	ld a,(keyval)	; bit 7=1 = valid keypress in buffer
+	bit 5,a
+	jr z, nohndl	; nope, no key in buffer
+
+	res 5,a		; clear keypress valid bit - we used our keypress
+	ld (keyval),a
+
+; at this poin A contains a value 0-F represernting the pressed key
+
+	ld a,(mode)	; pressing a key
+	xor 80h
+	ld (mode),a
+
+
+nohndl:	pop af
+	ret
+
+
+; ----------------------------------------------------------------------------
+; poll keyboard; update buffer if a keypress detected
 ;
-; returns a=0ffh if no key, otherwise value read
 ;
-; not yet modded for TEC-1
 ; ----------------------------------------------------------------------------
 
 pollkey:
+	push af
+	push bc
 	in a,(keyport)
 
+; SC-1 keyboard routine. Ensures only one keypress at a time and loop doesn't pause
+
 #ifdef SC1
-	bit 5,a
+	bit 5,a		; bit 5=1 = key pressed on SC-1
 	jr nz, key
 #endif
 
-	ld a,0ffh
+
+#ifdef TEC1
+	res 5,a
+	bit 6,a		; bit 6=0 = key pressed on TEC1 (Requires jmon resistor mod)
+	jr nz,nokey
+	set 5,a
+	jr key
+#endif
+
+nokey:
+	ld (keyflag),a
+	jr bail
+
+
+key:	and 3fh		; mask off top bits
+	ld b,a		; backup value
+	ld a,(keyflag)	; did we already see it pressed?
+	bit 5,a
+	jr nz, bail
+
+	ld a,b		; restore value and save; set flag
+	ld (keyflag),a
+	ld (keyval),a
+
+bail:
+	pop bc
+	pop af
 	ret
-
-key:	and 1fh
-	ret
-
-
 
 
 ; ----------------------------------------------------------------------------
@@ -170,7 +200,7 @@ key:	and 1fh
 ; ----------------------------------------------------------------------------
 ldelay:	push af
 	push de
-	ld de,0c000h
+	ld de,08000h
 
 linner:	dec de
 	ld a,d
@@ -198,6 +228,7 @@ i2c_start:
 	pop af
 	ret
 
+
 ; ----------------------------------------------------------------------------
 ; return i2c bus to idle
 ; ----------------------------------------------------------------------------
@@ -221,7 +252,6 @@ i2c_stop:
 ; enter  d = byte to send
 ; return d = result
 ; ----------------------------------------------------------------------------
-
 
 i2c_txbyte:
 	push af
@@ -309,6 +339,9 @@ ack:	ld a,01h	; Setup ACK pulse SCL=0 with SDA=1
 
 ; ----------------------------------------------------------------------------
 ; utility routine to scan the internal 7-seg displays
+;
+; Borrowed from Craig Jones Sc-1 monitor
+;
 ; ----------------------------------------------------------------------------
 
 scan_7seg:
@@ -348,19 +381,20 @@ off:	djnz off
 	pop af
 	ret
 
-
 conv7seg:
-	PUSH	BC
-	PUSH	HL
-	LD	HL,segs
-	AND	0fh	;TO INDEX TO THE
-	LD	C,A	;THE SEVEN SEGMENT
-	LD	B,00h	;CODE FOR THAT VALUE
-	ADD	HL,BC	;AND RETURN WITH
-	LD	A,(HL)	;CODE IN A
-	POP	HL
-	POP	BC
-	RET
+	push bc		; this is really a lookup table fetch that allows
+	push hl		; for memory wrapping of the lower byte
+
+	ld hl, segs	; list of 0-9 digits which segs to light for each
+	and 0fh		; ensure a is in a valid range
+	ld c,a		; put into lwr half of bc
+	ld b,00h	; upper half is 0
+	add hl,bc	; 16-bit add
+	ld a,(hl)	; fetch value from memory
+
+	pop hl
+	pop bc
+	ret
 
 ; ----------------------------------------------------------------------------
 ; write to the SPI bus
@@ -375,7 +409,6 @@ spi_wr:	push af
 
 	ld c,spiport
 	ld b,8
-
 
 nbit:	ld a,0f8h	; set 3 lines low
 	rlc d		; next bit into CF
@@ -401,7 +434,6 @@ nbit2:	ld a,078h
 	dec b
 	jr nz, nbit2
 
-
 	ld a,0fch	; raise CS
 	out (c),a
 
@@ -416,23 +448,27 @@ nbit2:	ld a,078h
 ; ----------------------------------------------------------------------------
 
 rd1307:
+	push hl
+	push bc
+	push de
+
 	ld hl,reg_buffer
 	ld b,7		; 7 bytes to read
-	ld e,0		; starting from reg 0
 
-
-
-lp1307:	ld d,ds1307	; i2c address
+	ld d,ds1307	; i2c address
 	rlc d		; 7 bits only
 	res 0,d		; new bit zero = 0 = write
+
 	call i2c_start
 	call i2c_txbyte
-	ld d,e		; second byte ; selects the required register
+	ld d,0		; second byte ; selects the required register = 0
 	call i2c_txbyte
 	call i2c_stop
 
+; the DS1307 auto-increments the register pointer after each read
+; so no need to constantly set the address in the loop
 
-
+lp1307:
 	ld d,ds1307	; i2c address
 	rlc d		; 7 bits only
 	set 0,d		; new bit zero = 1 = read
@@ -440,19 +476,16 @@ lp1307:	ld d,ds1307	; i2c address
 	call i2c_start
 	call i2c_txbyte
 	call i2c_rxbyte
-	ld (hl),d	; store result into buffer, this is our register's value
-
+	ld (hl),d	; store result into buffer; value read from ds1307
 	call i2c_stop
 
-	inc e
 	inc hl
 	djnz lp1307
 
-
-;	call i2c_stop
-
+	pop de
+	pop bc
+	pop hl
 	ret
-
 
 
 ; ----------------------------------------------------------------------------
@@ -460,11 +493,13 @@ lp1307:	ld d,ds1307	; i2c address
 ; ----------------------------------------------------------------------------
 
 set1307:
+	push hl
+	push bc
+	push de
+
 	ld hl,clockset
 	ld b,7		; 7 bytes to write
 	ld e,0		; starting from reg 0
-
-
 
 lps1307:
 	ld d,ds1307	; i2c address
@@ -483,9 +518,10 @@ lps1307:
 	inc hl
 	djnz lps1307
 
+	pop de
+	pop bc
+	pop hl
 	ret
-
-
 
 
 ; ----------------------------------------------------------------------------
@@ -497,16 +533,12 @@ convdata:
 
 	ld a,(mode)
 	bit 7,a
-
 	jr nz, conv2
 
 	inc hl			; move to D/M/Y
 	inc hl
 	inc hl
 	inc hl
-
-
-
 
 conv2:	ld de,disp_buff		; dest (to be filled right to left)
 	inc de
@@ -546,7 +578,6 @@ conv2:	ld de,disp_buff		; dest (to be filled right to left)
 	ret
 
 
-
 ; ----------------------------------------------------------------------------
 ; Send the contents of the display buffer to the MAX7219 chip
 ; ----------------------------------------------------------------------------
@@ -561,8 +592,6 @@ lout:	ld e,(hl)
 	jr nz, lout
 
 	ret
-
-
 
 
 ; ----------------------------------------------------------------------------
@@ -590,6 +619,9 @@ disp_buff:
 
 mode:	.db 80h
 
+keyflag	.db 00h
+keyval	.db 00h
+
 
 clockset:
 	.db 00h	; osc, 10secs, secs
@@ -599,7 +631,6 @@ clockset:
 	.db 07h ; date
 	.db 10h	; month
 	.db 22h	; year
-
 
 #ifdef SC1
 segs:
@@ -614,7 +645,6 @@ segs:
 	.db 7fh
 	.db 6fh
 #endif
-
 
 #ifdef TEC1
 segs:
