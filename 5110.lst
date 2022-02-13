@@ -1,0 +1,672 @@
+0001   0000             ; ----------------------------------------------------------------------------
+0002   0000             ;
+0003   0000             ;	Test code for TEC SPI2C board with Nokia 5110 LCD
+0004   0000             ;
+0005   0000             ;	Designed to compile for the TEC-1 or SC-1 as the target machine
+0006   0000             ;
+0007   0000             ;	Assemble with TASM using the command line options -80 -g0
+0008   0000             ;
+0009   0000             ;	Copyright (C) 2022h, Craig Hart. Distributed under the GPLv3 license
+0010   0000             ;
+0011   0000             ;	https://github.com/1971Merlin/SPI2C
+0012   0000             ;
+0013   0000             ; ----------------------------------------------------------------------------
+0014   0000             
+0015   0000             
+0016   0000             ; uses https://www.riyas.org/2017/01/online-tool-to-convert-bitmap-to-hex-nokia-arduino.html
+0017   0000             
+0018   0000             
+0019   0000             
+0020   0000             ; ----------------------------------------------------------------------------
+0021   0000             ; conditional defines - set the target machine platform
+0022   0000             ; comment or un-commnt the following two lines to compile for target machine
+0023   0000             ; ----------------------------------------------------------------------------
+0024   0000             
+0025   0000             
+0026   0000             
+0027   0000             ; using i2cspi's onboard 74ls138 IO ports
+0028   0000             spiport	.equ	42h
+0029   0000             
+0030   0000             ; start address for SC-1 code
+0031   2000             	.org 2000h
+0032   2000             
+0033   2000             
+0034   2000             
+0035   2000             ; ----------------------------------------------------------------------------
+0036   2000             ; hardware initialization code starts here
+0037   2000             ; ----------------------------------------------------------------------------
+0038   2000             
+0039   2000             ; reset spi bus to idle state
+0040   2000 0E 42       	ld c,spiport	; reset CS = 1
+0041   2002 3E FF       	ld a,0ffh	; Raise CS
+0042   2004 ED 79       	out (c),a
+0043   2006             
+0044   2006             
+0045   2006             ; ----------------------------------------------------------------------------
+0046   2006             ; main program loop
+0047   2006             ; ----------------------------------------------------------------------------
+0048   2006             
+0049   2006             loop:
+0050   2006             
+0051   2006             
+0052   2006             ; write init
+0053   2006             
+0054   2006 1E 21       	ld e,21h		; complex mode
+0055   2008 16 00       	ld d,00h
+0056   200A CD 52 20    	call spi_wr
+0057   200D             
+0058   200D 1E B9       	ld e,0b9h		; set vOP
+0059   200F 16 00       	ld d,00h
+0060   2011 CD 52 20    	call spi_wr
+0061   2014             
+0062   2014 1E 04       	ld e,04h		; temp coeficcient
+0063   2016 16 00       	ld d,00h
+0064   2018 CD 52 20    	call spi_wr
+0065   201B             
+0066   201B 1E 14       	ld e,14h		; lcd bias
+0067   201D 16 00       	ld d,00h
+0068   201F CD 52 20    	call spi_wr
+0069   2022             
+0070   2022 1E 20       	ld e,20h		; simple mode
+0071   2024 16 00       	ld d,00h
+0072   2026 CD 52 20    	call spi_wr
+0073   2029             
+0074   2029 1E 40       	ld e,40h		; Y = 0
+0075   202B 16 00       	ld d,00h
+0076   202D CD 52 20    	call spi_wr
+0077   2030             
+0078   2030 1E 80       	ld e,80h		; X = 0
+0079   2032 16 00       	ld d,00h
+0080   2034 CD 52 20    	call spi_wr
+0081   2037             
+0082   2037 1E 0C       	ld e,0ch		; normal mode
+0083   2039 16 00       	ld d,00h
+0084   203B CD 52 20    	call spi_wr
+0085   203E             
+0086   203E             
+0087   203E             ; write data
+0088   203E 01 F8 01    	ld bc,504
+0089   2041 21 78 20    	ld hl,ddata
+0090   2044             
+0091   2044 7E          fill:	ld a,(HL)
+0092   2045 5F          	ld e,a
+0093   2046 16 08       	ld d,08h
+0094   2048 CD 52 20    	call spi_wr
+0095   204B             
+0096   204B 23          	inc hl
+0097   204C 0B          	dec bc
+0098   204D             
+0099   204D 78          	ld a,b
+0100   204E B1          	or c
+0101   204F 20 F3       	jr nz, fill
+0102   2051             
+0103   2051 76          	halt
+0104   2052             
+0105   2052             
+0106   2052             
+0107   2052             ; ----------------------------------------------------------------------------
+0108   2052             ; write COMMAND to the SPI bus
+0109   2052             ;
+0110   2052             ; d = command/data 00 = commandh, 08 = data
+0111   2052             ; e = data byte
+0112   2052             ; ----------------------------------------------------------------------------
+0113   2052             
+0114   2052             spi_wr:
+0115   2052 F5          	push af
+0116   2053 C5          	push bc
+0117   2054 D5          	push de
+0118   2055             
+0119   2055 0E 42       	ld c,spiport
+0120   2057 06 08       	ld b,8		; 8 BITS
+0121   2059             
+0122   2059 3E E4       nbit2:	ld a,0e4h	; chip select,command low
+0123   205B 82          	add a,d		; add in the command/data register
+0124   205C CB 7B       	bit 7,e
+0125   205E 28 02       	jr z, no
+0126   2060 CB C7       	set 0,a
+0127   2062             
+0128   2062 ED 79       no:	out (c),a
+0129   2064 CB CF       	set 1,a		; set CLK
+0130   2066 ED 79       	out (c),a
+0131   2068 CB 8F       	res 1,a		; clear CLK
+0132   206A ED 79       	out (c),a
+0133   206C             
+0134   206C CB 03       	rlc e		; next bit
+0135   206E             
+0136   206E 10 E9       	djnz nbit2
+0137   2070             
+0138   2070 3E F4       	ld a,0f4h	; raise CS
+0139   2072 ED 79       	out (c),a
+0140   2074             
+0141   2074 D1          	pop de
+0142   2075 C1          	pop bc
+0143   2076 F1          	pop af
+0144   2077 C9          	ret
+0145   2078             
+0146   2078             
+0147   2078             
+0148   2078             ; ----------------------------------------------------------------------------
+0149   2078             ;	datah, variables, etc.
+0150   2078             ; ----------------------------------------------------------------------------
+0151   2078             
+0152   2078             ddata:
+0153   2078             
+0154   2078 00          	.db 000h
+0155   2079 00          	.db 000h
+0156   207A 00          	.db 000h
+0157   207B 00          	.db 000h
+0158   207C 00          	.db 000h
+0159   207D 00          	.db 000h
+0160   207E 20          	.db 020h
+0161   207F 3C          	.db 03ch
+0162   2080 3C          	.db 03ch
+0163   2081 3C          	.db 03ch
+0164   2082 FC          	.db 0fch
+0165   2083 FC          	.db 0fch
+0166   2084 FC          	.db 0fch
+0167   2085 FC          	.db 0fch
+0168   2086 FC          	.db 0fch
+0169   2087 FC          	.db 0fch
+0170   2088 FC          	.db 0fch
+0171   2089 FC          	.db 0fch
+0172   208A FC          	.db 0fch
+0173   208B FC          	.db 0fch
+0174   208C FC          	.db 0fch
+0175   208D 3C          	.db 03ch
+0176   208E 3C          	.db 03ch
+0177   208F 3C          	.db 03ch
+0178   2090 3C          	.db 03ch
+0179   2091 3C          	.db 03ch
+0180   2092 1C          	.db 01ch
+0181   2093 E0          	.db 0e0h
+0182   2094 F0          	.db 0f0h
+0183   2095 F8          	.db 0f8h
+0184   2096 F8          	.db 0f8h
+0185   2097 FC          	.db 0fch
+0186   2098 FC          	.db 0fch
+0187   2099 FC          	.db 0fch
+0188   209A FC          	.db 0fch
+0189   209B FC          	.db 0fch
+0190   209C FC          	.db 0fch
+0191   209D 3C          	.db 03ch
+0192   209E 3C          	.db 03ch
+0193   209F 3C          	.db 03ch
+0194   20A0 3C          	.db 03ch
+0195   20A1 3C          	.db 03ch
+0196   20A2 3C          	.db 03ch
+0197   20A3 3C          	.db 03ch
+0198   20A4 3C          	.db 03ch
+0199   20A5 3C          	.db 03ch
+0200   20A6 3C          	.db 03ch
+0201   20A7 3C          	.db 03ch
+0202   20A8 3C          	.db 03ch
+0203   20A9 3C          	.db 03ch
+0204   20AA 3C          	.db 03ch
+0205   20AB 3C          	.db 03ch
+0206   20AC 1C          	.db 01ch
+0207   20AD 00          	.db 000h
+0208   20AE 00          	.db 000h
+0209   20AF 00          	.db 000h
+0210   20B0 00          	.db 000h
+0211   20B1 80          	.db 080h
+0212   20B2 E0          	.db 0e0h
+0213   20B3 F0          	.db 0f0h
+0214   20B4 F8          	.db 0f8h
+0215   20B5 F8          	.db 0f8h
+0216   20B6 FC          	.db 0fch
+0217   20B7 FC          	.db 0fch
+0218   20B8 FC          	.db 0fch
+0219   20B9 FC          	.db 0fch
+0220   20BA FC          	.db 0fch
+0221   20BB FC          	.db 0fch
+0222   20BC 3C          	.db 03ch
+0223   20BD 3C          	.db 03ch
+0224   20BE 3C          	.db 03ch
+0225   20BF 3C          	.db 03ch
+0226   20C0 3C          	.db 03ch
+0227   20C1 3C          	.db 03ch
+0228   20C2 3C          	.db 03ch
+0229   20C3 3C          	.db 03ch
+0230   20C4 3C          	.db 03ch
+0231   20C5 3C          	.db 03ch
+0232   20C6 3C          	.db 03ch
+0233   20C7 3C          	.db 03ch
+0234   20C8 3C          	.db 03ch
+0235   20C9 3C          	.db 03ch
+0236   20CA 3C          	.db 03ch
+0237   20CB 0C          	.db 00ch
+0238   20CC 00          	.db 000h
+0239   20CD 00          	.db 000h
+0240   20CE 00          	.db 000h
+0241   20CF 00          	.db 000h
+0242   20D0 00          	.db 000h
+0243   20D1 00          	.db 000h
+0244   20D2 00          	.db 000h
+0245   20D3 00          	.db 000h
+0246   20D4 C0          	.db 0c0h
+0247   20D5 F8          	.db 0f8h
+0248   20D6 FF          	.db 0ffh
+0249   20D7 FF          	.db 0ffh
+0250   20D8 FF          	.db 0ffh
+0251   20D9 FF          	.db 0ffh
+0252   20DA FF          	.db 0ffh
+0253   20DB FF          	.db 0ffh
+0254   20DC FF          	.db 0ffh
+0255   20DD FF          	.db 0ffh
+0256   20DE 3F          	.db 03fh
+0257   20DF 07          	.db 007h
+0258   20E0 00          	.db 000h
+0259   20E1 00          	.db 000h
+0260   20E2 00          	.db 000h
+0261   20E3 00          	.db 000h
+0262   20E4 C0          	.db 0c0h
+0263   20E5 F8          	.db 0f8h
+0264   20E6 FF          	.db 0ffh
+0265   20E7 FF          	.db 0ffh
+0266   20E8 FF          	.db 0ffh
+0267   20E9 FF          	.db 0ffh
+0268   20EA FF          	.db 0ffh
+0269   20EB FF          	.db 0ffh
+0270   20EC FF          	.db 0ffh
+0271   20ED FF          	.db 0ffh
+0272   20EE 7F          	.db 07fh
+0273   20EF 7F          	.db 07fh
+0274   20F0 7C          	.db 07ch
+0275   20F1 7C          	.db 07ch
+0276   20F2 78          	.db 078h
+0277   20F3 7C          	.db 07ch
+0278   20F4 78          	.db 078h
+0279   20F5 7C          	.db 07ch
+0280   20F6 7C          	.db 07ch
+0281   20F7 7C          	.db 07ch
+0282   20F8 38          	.db 038h
+0283   20F9 00          	.db 000h
+0284   20FA 00          	.db 000h
+0285   20FB 00          	.db 000h
+0286   20FC 00          	.db 000h
+0287   20FD 00          	.db 000h
+0288   20FE 00          	.db 000h
+0289   20FF 00          	.db 000h
+0290   2100 00          	.db 000h
+0291   2101 00          	.db 000h
+0292   2102 00          	.db 000h
+0293   2103 C0          	.db 0c0h
+0294   2104 FC          	.db 0fch
+0295   2105 FF          	.db 0ffh
+0296   2106 FF          	.db 0ffh
+0297   2107 FF          	.db 0ffh
+0298   2108 FF          	.db 0ffh
+0299   2109 FF          	.db 0ffh
+0300   210A FF          	.db 0ffh
+0301   210B FF          	.db 0ffh
+0302   210C FF          	.db 0ffh
+0303   210D 3F          	.db 03fh
+0304   210E 07          	.db 007h
+0305   210F 00          	.db 000h
+0306   2110 00          	.db 000h
+0307   2111 00          	.db 000h
+0308   2112 00          	.db 000h
+0309   2113 00          	.db 000h
+0310   2114 00          	.db 000h
+0311   2115 00          	.db 000h
+0312   2116 00          	.db 000h
+0313   2117 00          	.db 000h
+0314   2118 00          	.db 000h
+0315   2119 00          	.db 000h
+0316   211A 00          	.db 000h
+0317   211B 00          	.db 000h
+0318   211C 00          	.db 000h
+0319   211D 00          	.db 000h
+0320   211E 00          	.db 000h
+0321   211F 00          	.db 000h
+0322   2120 00          	.db 000h
+0323   2121 00          	.db 000h
+0324   2122 00          	.db 000h
+0325   2123 00          	.db 000h
+0326   2124 00          	.db 000h
+0327   2125 00          	.db 000h
+0328   2126 E0          	.db 0e0h
+0329   2127 FE          	.db 0feh
+0330   2128 FF          	.db 0ffh
+0331   2129 FF          	.db 0ffh
+0332   212A FF          	.db 0ffh
+0333   212B FF          	.db 0ffh
+0334   212C FF          	.db 0ffh
+0335   212D FF          	.db 0ffh
+0336   212E FF          	.db 0ffh
+0337   212F FF          	.db 0ffh
+0338   2130 0F          	.db 00fh
+0339   2131 01          	.db 001h
+0340   2132 00          	.db 000h
+0341   2133 00          	.db 000h
+0342   2134 00          	.db 000h
+0343   2135 00          	.db 000h
+0344   2136 E0          	.db 0e0h
+0345   2137 FE          	.db 0feh
+0346   2138 FF          	.db 0ffh
+0347   2139 FF          	.db 0ffh
+0348   213A FF          	.db 0ffh
+0349   213B FF          	.db 0ffh
+0350   213C FF          	.db 0ffh
+0351   213D FF          	.db 0ffh
+0352   213E FF          	.db 0ffh
+0353   213F FF          	.db 0ffh
+0354   2140 FF          	.db 0ffh
+0355   2141 F9          	.db 0f9h
+0356   2142 F8          	.db 0f8h
+0357   2143 F8          	.db 0f8h
+0358   2144 F8          	.db 0f8h
+0359   2145 F8          	.db 0f8h
+0360   2146 F8          	.db 0f8h
+0361   2147 F8          	.db 0f8h
+0362   2148 F8          	.db 0f8h
+0363   2149 F8          	.db 0f8h
+0364   214A F8          	.db 0f8h
+0365   214B F8          	.db 0f8h
+0366   214C F8          	.db 0f8h
+0367   214D F8          	.db 0f8h
+0368   214E F8          	.db 0f8h
+0369   214F 18          	.db 018h
+0370   2150 00          	.db 000h
+0371   2151 00          	.db 000h
+0372   2152 00          	.db 000h
+0373   2153 00          	.db 000h
+0374   2154 80          	.db 080h
+0375   2155 F0          	.db 0f0h
+0376   2156 FE          	.db 0feh
+0377   2157 FF          	.db 0ffh
+0378   2158 FF          	.db 0ffh
+0379   2159 FF          	.db 0ffh
+0380   215A FF          	.db 0ffh
+0381   215B FF          	.db 0ffh
+0382   215C FF          	.db 0ffh
+0383   215D FF          	.db 0ffh
+0384   215E FF          	.db 0ffh
+0385   215F FF          	.db 0ffh
+0386   2160 F9          	.db 0f9h
+0387   2161 F8          	.db 0f8h
+0388   2162 F8          	.db 0f8h
+0389   2163 F8          	.db 0f8h
+0390   2164 F8          	.db 0f8h
+0391   2165 F8          	.db 0f8h
+0392   2166 F8          	.db 0f8h
+0393   2167 F8          	.db 0f8h
+0394   2168 F8          	.db 0f8h
+0395   2169 F8          	.db 0f8h
+0396   216A F8          	.db 0f8h
+0397   216B F8          	.db 0f8h
+0398   216C F8          	.db 0f8h
+0399   216D 78          	.db 078h
+0400   216E 08          	.db 008h
+0401   216F 00          	.db 000h
+0402   2170 00          	.db 000h
+0403   2171 00          	.db 000h
+0404   2172 00          	.db 000h
+0405   2173 00          	.db 000h
+0406   2174 00          	.db 000h
+0407   2175 00          	.db 000h
+0408   2176 00          	.db 000h
+0409   2177 C0          	.db 0c0h
+0410   2178 F8          	.db 0f8h
+0411   2179 FF          	.db 0ffh
+0412   217A FF          	.db 0ffh
+0413   217B FF          	.db 0ffh
+0414   217C FF          	.db 0ffh
+0415   217D FF          	.db 0ffh
+0416   217E FF          	.db 0ffh
+0417   217F FF          	.db 0ffh
+0418   2180 FF          	.db 0ffh
+0419   2181 FF          	.db 0ffh
+0420   2182 87          	.db 087h
+0421   2183 80          	.db 080h
+0422   2184 00          	.db 000h
+0423   2185 00          	.db 000h
+0424   2186 00          	.db 000h
+0425   2187 00          	.db 000h
+0426   2188 00          	.db 000h
+0427   2189 01          	.db 001h
+0428   218A 07          	.db 007h
+0429   218B 07          	.db 007h
+0430   218C 0F          	.db 00fh
+0431   218D 0F          	.db 00fh
+0432   218E 0F          	.db 00fh
+0433   218F 0F          	.db 00fh
+0434   2190 0F          	.db 00fh
+0435   2191 0F          	.db 00fh
+0436   2192 0F          	.db 00fh
+0437   2193 0F          	.db 00fh
+0438   2194 0F          	.db 00fh
+0439   2195 0F          	.db 00fh
+0440   2196 0F          	.db 00fh
+0441   2197 0F          	.db 00fh
+0442   2198 0F          	.db 00fh
+0443   2199 0F          	.db 00fh
+0444   219A 0F          	.db 00fh
+0445   219B 0F          	.db 00fh
+0446   219C 0F          	.db 00fh
+0447   219D 0F          	.db 00fh
+0448   219E 0F          	.db 00fh
+0449   219F 0F          	.db 00fh
+0450   21A0 0F          	.db 00fh
+0451   21A1 07          	.db 007h
+0452   21A2 00          	.db 000h
+0453   21A3 00          	.db 000h
+0454   21A4 00          	.db 000h
+0455   21A5 00          	.db 000h
+0456   21A6 00          	.db 000h
+0457   21A7 00          	.db 000h
+0458   21A8 03          	.db 003h
+0459   21A9 07          	.db 007h
+0460   21AA 0F          	.db 00fh
+0461   21AB 0F          	.db 00fh
+0462   21AC 0F          	.db 00fh
+0463   21AD 0F          	.db 00fh
+0464   21AE 0F          	.db 00fh
+0465   21AF 0F          	.db 00fh
+0466   21B0 0F          	.db 00fh
+0467   21B1 0F          	.db 00fh
+0468   21B2 0F          	.db 00fh
+0469   21B3 0F          	.db 00fh
+0470   21B4 0F          	.db 00fh
+0471   21B5 0F          	.db 00fh
+0472   21B6 0F          	.db 00fh
+0473   21B7 0F          	.db 00fh
+0474   21B8 0F          	.db 00fh
+0475   21B9 0F          	.db 00fh
+0476   21BA 0F          	.db 00fh
+0477   21BB 0F          	.db 00fh
+0478   21BC 0F          	.db 00fh
+0479   21BD 0F          	.db 00fh
+0480   21BE 0F          	.db 00fh
+0481   21BF 0F          	.db 00fh
+0482   21C0 07          	.db 007h
+0483   21C1 00          	.db 000h
+0484   21C2 00          	.db 000h
+0485   21C3 00          	.db 000h
+0486   21C4 00          	.db 000h
+0487   21C5 00          	.db 000h
+0488   21C6 00          	.db 000h
+0489   21C7 00          	.db 000h
+0490   21C8 80          	.db 080h
+0491   21C9 F0          	.db 0f0h
+0492   21CA FE          	.db 0feh
+0493   21CB FF          	.db 0ffh
+0494   21CC FF          	.db 0ffh
+0495   21CD FF          	.db 0ffh
+0496   21CE FF          	.db 0ffh
+0497   21CF FF          	.db 0ffh
+0498   21D0 FF          	.db 0ffh
+0499   21D1 FF          	.db 0ffh
+0500   21D2 FF          	.db 0ffh
+0501   21D3 FF          	.db 0ffh
+0502   21D4 FF          	.db 0ffh
+0503   21D5 FF          	.db 0ffh
+0504   21D6 FF          	.db 0ffh
+0505   21D7 FF          	.db 0ffh
+0506   21D8 FF          	.db 0ffh
+0507   21D9 FF          	.db 0ffh
+0508   21DA FF          	.db 0ffh
+0509   21DB FF          	.db 0ffh
+0510   21DC FF          	.db 0ffh
+0511   21DD FF          	.db 0ffh
+0512   21DE FF          	.db 0ffh
+0513   21DF FF          	.db 0ffh
+0514   21E0 FF          	.db 0ffh
+0515   21E1 FF          	.db 0ffh
+0516   21E2 FF          	.db 0ffh
+0517   21E3 FF          	.db 0ffh
+0518   21E4 FF          	.db 0ffh
+0519   21E5 FF          	.db 0ffh
+0520   21E6 FF          	.db 0ffh
+0521   21E7 FF          	.db 0ffh
+0522   21E8 FF          	.db 0ffh
+0523   21E9 FF          	.db 0ffh
+0524   21EA FF          	.db 0ffh
+0525   21EB 7F          	.db 07fh
+0526   21EC 0F          	.db 00fh
+0527   21ED 01          	.db 001h
+0528   21EE 00          	.db 000h
+0529   21EF 00          	.db 000h
+0530   21F0 00          	.db 000h
+0531   21F1 00          	.db 000h
+0532   21F2 00          	.db 000h
+0533   21F3 00          	.db 000h
+0534   21F4 00          	.db 000h
+0535   21F5 00          	.db 000h
+0536   21F6 00          	.db 000h
+0537   21F7 00          	.db 000h
+0538   21F8 00          	.db 000h
+0539   21F9 00          	.db 000h
+0540   21FA 00          	.db 000h
+0541   21FB 00          	.db 000h
+0542   21FC 00          	.db 000h
+0543   21FD 00          	.db 000h
+0544   21FE 00          	.db 000h
+0545   21FF 00          	.db 000h
+0546   2200 00          	.db 000h
+0547   2201 00          	.db 000h
+0548   2202 00          	.db 000h
+0549   2203 00          	.db 000h
+0550   2204 00          	.db 000h
+0551   2205 00          	.db 000h
+0552   2206 00          	.db 000h
+0553   2207 00          	.db 000h
+0554   2208 00          	.db 000h
+0555   2209 00          	.db 000h
+0556   220A 00          	.db 000h
+0557   220B 00          	.db 000h
+0558   220C 00          	.db 000h
+0559   220D 00          	.db 000h
+0560   220E 00          	.db 000h
+0561   220F 00          	.db 000h
+0562   2210 00          	.db 000h
+0563   2211 00          	.db 000h
+0564   2212 00          	.db 000h
+0565   2213 00          	.db 000h
+0566   2214 00          	.db 000h
+0567   2215 00          	.db 000h
+0568   2216 00          	.db 000h
+0569   2217 00          	.db 000h
+0570   2218 00          	.db 000h
+0571   2219 00          	.db 000h
+0572   221A 00          	.db 000h
+0573   221B 00          	.db 000h
+0574   221C 07          	.db 007h
+0575   221D 0F          	.db 00fh
+0576   221E 1F          	.db 01fh
+0577   221F 1F          	.db 01fh
+0578   2220 1F          	.db 01fh
+0579   2221 1F          	.db 01fh
+0580   2222 1F          	.db 01fh
+0581   2223 1F          	.db 01fh
+0582   2224 1F          	.db 01fh
+0583   2225 1F          	.db 01fh
+0584   2226 1F          	.db 01fh
+0585   2227 1F          	.db 01fh
+0586   2228 1F          	.db 01fh
+0587   2229 1F          	.db 01fh
+0588   222A 1F          	.db 01fh
+0589   222B 1F          	.db 01fh
+0590   222C 1F          	.db 01fh
+0591   222D 1F          	.db 01fh
+0592   222E 1F          	.db 01fh
+0593   222F 1F          	.db 01fh
+0594   2230 1F          	.db 01fh
+0595   2231 1F          	.db 01fh
+0596   2232 1F          	.db 01fh
+0597   2233 1F          	.db 01fh
+0598   2234 1F          	.db 01fh
+0599   2235 1F          	.db 01fh
+0600   2236 1F          	.db 01fh
+0601   2237 1F          	.db 01fh
+0602   2238 1F          	.db 01fh
+0603   2239 1F          	.db 01fh
+0604   223A 1F          	.db 01fh
+0605   223B 1F          	.db 01fh
+0606   223C 1F          	.db 01fh
+0607   223D 1F          	.db 01fh
+0608   223E 03          	.db 003h
+0609   223F 00          	.db 000h
+0610   2240 00          	.db 000h
+0611   2241 00          	.db 000h
+0612   2242 00          	.db 000h
+0613   2243 00          	.db 000h
+0614   2244 00          	.db 000h
+0615   2245 00          	.db 000h
+0616   2246 00          	.db 000h
+0617   2247 00          	.db 000h
+0618   2248 00          	.db 000h
+0619   2249 00          	.db 000h
+0620   224A 00          	.db 000h
+0621   224B 00          	.db 000h
+0622   224C 00          	.db 000h
+0623   224D 00          	.db 000h
+0624   224E 00          	.db 000h
+0625   224F 00          	.db 000h
+0626   2250 00          	.db 000h
+0627   2251 00          	.db 000h
+0628   2252 00          	.db 000h
+0629   2253 00          	.db 000h
+0630   2254 00          	.db 000h
+0631   2255 00          	.db 000h
+0632   2256 00          	.db 000h
+0633   2257 00          	.db 000h
+0634   2258 00          	.db 000h
+0635   2259 00          	.db 000h
+0636   225A 00          	.db 000h
+0637   225B 00          	.db 000h
+0638   225C 00          	.db 000h
+0639   225D 00          	.db 000h
+0640   225E 00          	.db 000h
+0641   225F 00          	.db 000h
+0642   2260 00          	.db 000h
+0643   2261 00          	.db 000h
+0644   2262 00          	.db 000h
+0645   2263 00          	.db 000h
+0646   2264 00          	.db 000h
+0647   2265 00          	.db 000h
+0648   2266 00          	.db 000h
+0649   2267 00          	.db 000h
+0650   2268 00          	.db 000h
+0651   2269 00          	.db 000h
+0652   226A 00          	.db 000h
+0653   226B 00          	.db 000h
+0654   226C 00          	.db 000h
+0655   226D 00          	.db 000h
+0656   226E 00          	.db 000h
+0657   226F 00          	.db 000h
+0658   2270             
+0659   2270             
+0660   2270             
+0661   2270             
+0662   2270             
+0663   2270             
+0664   2270             
+0665   2270             
+0666   2270             
+0667   2270             ; ----------------------------------------------------------------------------
+0668   2270             ; end of our code and data, end of program. goodbye!
+0669   2270             ; ----------------------------------------------------------------------------
+0670   2270             
+0671   2270             	.end
+tasm: Number of errors = 0
