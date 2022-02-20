@@ -1,0 +1,470 @@
+0001   0000             ; ----------------------------------------------------------------------------
+0002   0000             ;
+0003   0000             ;	Test code for TEC SPI2C board. Detects i2c devices and displays
+0004   0000             ;       their address on the 7-seg displays. press any key to go on.
+0005   0000             ;
+0006   0000             ;       FF on the dispaly means no i2c devices detected
+0007   0000             ;
+0008   0000             ;	Designed to compile for the TEC-1 or SC-1 as the target machine
+0009   0000             ;
+0010   0000             ;	Assemble with TASM using the command line options -80 -g0
+0011   0000             ;
+0012   0000             ;	Copyright (C) 2022, Craig Hart. Distributed under the GPLv3 license
+0013   0000             ;
+0014   0000             ;	https://github.com/1971Merlin/SPI2C
+0015   0000             ;
+0016   0000             ; ----------------------------------------------------------------------------
+0017   0000             
+0018   0000             
+0019   0000             ; ----------------------------------------------------------------------------
+0020   0000             ; conditional defines - set the target machine platform
+0021   0000             ; comment or un-commnt the following two lines to compile for target machine
+0022   0000             ; ----------------------------------------------------------------------------
+0023   0000             
+0024   0000             #define SC1
+0025   0000             ;#define TEC1
+0026   0000             
+0027   0000             
+0028   0000             #ifdef SC1
+0029   0000             
+0030   0000             ; using i2cspi's onboard 74ls138 IO ports
+0031   0000             i2cport	.equ	40h
+0032   0000             spiport	.equ	42h
+0033   0000             
+0034   0000             ; SC-1 7-seg ports
+0035   0000             disscan .equ	85h
+0036   0000             disseg	.equ	84h
+0037   0000             
+0038   0000             ; keyboard port
+0039   0000             keyport	.equ	86h
+0040   0000             
+0041   0000             ; start address for SC-1 code
+0042   2000             	.org 2000h
+0043   2000             
+0044   2000             #endif
+0045   2000             
+0046   2000             
+0047   2000             
+0048   2000~            #ifdef TEC1
+0049   2000~            
+0050   2000~            ; using TEC's 74ls138 IO ports
+0051   2000~            i2cport	.equ	06h
+0052   2000~            spiport	.equ	07h
+0053   2000~            
+0054   2000~            ; tec-1 7-seg ports
+0055   2000~            disscan	.equ	01h
+0056   2000~            disseg	.equ	02h
+0057   2000~            
+0058   2000~            ; keyboard port
+0059   2000~            keyport	.equ	00h
+0060   2000~            
+0061   2000~            
+0062   2000~            ; start address for TEC code
+0063   2000~            	.org 0900h
+0064   2000~            
+0065   2000             #endif
+0066   2000             
+0067   2000             
+0068   2000             ; ----------------------------------------------------------------------------
+0069   2000             ; hardware initialization code starts here
+0070   2000             ; ----------------------------------------------------------------------------
+0071   2000             
+0072   2000             ; reset i2c bus to idle state
+0073   2000 3E 03       	ld a,03h	; idle state = SCL and SDA both high
+0074   2002 0E 40       	ld c,i2cport
+0075   2004 ED 79       	out (c),a
+0076   2006             
+0077   2006             
+0078   2006             ; ----------------------------------------------------------------------------
+0079   2006             ; main program loop
+0080   2006             ; read the clock from the i2c bus
+0081   2006             ; display the clock on the internal 7-seg's (for testing!)
+0082   2006             ; display the clock also on the i2c 7-seg module
+0083   2006             ; ----------------------------------------------------------------------------
+0084   2006             
+0085   2006 3E 00       	ld a,00h
+0086   2008 32 58 21    	ld (mode),a
+0087   200B             
+0088   200B             
+0089   200B             
+0090   200B 3E 00       oloop:	ld a,00h
+0091   200D 32 5B 21    	ld (i2caddr),a
+0092   2010 32 5C 21    	ld (found),a
+0093   2013             
+0094   2013 CD D1 20    loop:	call i2c_start
+0095   2016 3A 5B 21    	ld a,(i2caddr)
+0096   2019 57          	ld d,a			; convert to i2c address
+0097   201A CB 02       	rlc d
+0098   201C CB 82       	res 0,d
+0099   201E CD EF 20    	call i2c_txbyte
+0100   2021 CD E0 20    	call i2c_stop
+0101   2024             
+0102   2024 CB 42       	bit 0,d
+0103   2026 CA 4E 20    	jp z,got
+0104   2029             
+0105   2029 3A 5B 21    rloop:	ld a,(i2caddr)		; next address
+0106   202C 3C          	inc a
+0107   202D 32 5B 21    	ld (i2caddr),a
+0108   2030 FE 80       	cp 80h			; addresses are 7 bit only
+0109   2032 28 02       	jr z,ni2cn
+0110   2034             
+0111   2034 18 DD       	jr loop
+0112   2036             
+0113   2036             
+0114   2036 3A 5C 21    ni2cn:	ld a,(found)		; end of loop but found something prior, so rescan
+0115   2039 FE 00       	cp 0
+0116   203B C2 0B 20    	jp nz,oloop
+0117   203E             
+0118   203E             
+0119   203E 3E 00       	ld a,00h		; reset for future
+0120   2040 32 5B 21    	ld (i2caddr),a
+0121   2043 21 5D 21    	ld hl,disp_buff		; nothing found
+0122   2046 3E 0F       	ld a,0fh
+0123   2048 77          	ld (hl),a
+0124   2049 23          	inc hl
+0125   204A 77          	ld (hl),a
+0126   204B C3 6B 20    	jp dloop
+0127   204E             
+0128   204E             
+0129   204E 3A 5C 21    got:	ld a,(found)		; found a device
+0130   2051 3C          	inc a
+0131   2052 32 5C 21    	ld (found),a
+0132   2055             
+0133   2055 21 5D 21    	ld hl,disp_buff
+0134   2058 3A 5B 21    	ld a,(i2caddr)
+0135   205B CB 3F       	srl a
+0136   205D CB 3F       	srl a
+0137   205F CB 3F       	srl a
+0138   2061 CB 3F       	srl a
+0139   2063 77          	ld (hl),a
+0140   2064 23          	inc hl
+0141   2065 3A 5B 21    	ld a,(i2caddr)
+0142   2068 E6 0F       	and 0fh
+0143   206A 77          	ld (hl),a
+0144   206B             
+0145   206B             
+0146   206B CD 15 21    dloop:	call scan_7seg
+0147   206E             
+0148   206E CD A3 20    	call pollkey	; sample keyboard state
+0149   2071 CD 8F 20    	call handlekey	; process a keystroke, if any
+0150   2074             
+0151   2074 3A 58 21    	ld a,(mode)
+0152   2077 FE FF       	cp 0ffh
+0153   2079             
+0154   2079 C2 6B 20    	jp nz,dloop
+0155   207C             
+0156   207C             
+0157   207C 3E 00       	ld a,0
+0158   207E 32 58 21    	ld (mode),a
+0159   2081             
+0160   2081 3E FF       	ld a,0ffh
+0161   2083 21 5D 21    	ld hl,disp_buff
+0162   2086 77          	ld (hl),a
+0163   2087 23          	inc hl
+0164   2088 77          	ld (hl),a
+0165   2089             
+0166   2089 CD C4 20    	call ldelay
+0167   208C             
+0168   208C C3 29 20    	jp rloop
+0169   208F             
+0170   208F             
+0171   208F             ; ----------------------------------------------------------------------------
+0172   208F             ; handle key; check buffer fora keystroke and do something if found
+0173   208F             ; ----------------------------------------------------------------------------
+0174   208F             
+0175   208F             handlekey:
+0176   208F F5          	push af
+0177   2090             
+0178   2090 3A 5A 21    	ld a,(keyval)	; bit 7=1 = valid keypress in buffer
+0179   2093 CB 6F       	bit 5,a
+0180   2095 28 0A       	jr z, nohndl	; nope, no key in buffer
+0181   2097             
+0182   2097 CB AF       	res 5,a		; clear keypress valid bit - we used our keypress
+0183   2099 32 5A 21    	ld (keyval),a
+0184   209C             
+0185   209C             ; at this poin A contains a value 0-F represernting the pressed key
+0186   209C             
+0187   209C 3E FF       	ld a,0ffh	; pressing a key
+0188   209E 32 58 21    	ld (mode),a
+0189   20A1             
+0190   20A1             
+0191   20A1 F1          nohndl:	pop af
+0192   20A2 C9          	ret
+0193   20A3             
+0194   20A3             
+0195   20A3             ; ----------------------------------------------------------------------------
+0196   20A3             ; poll keyboard; update buffer if a keypress detected
+0197   20A3             ;
+0198   20A3             ;
+0199   20A3             ; ----------------------------------------------------------------------------
+0200   20A3             
+0201   20A3             pollkey:
+0202   20A3 F5          	push af
+0203   20A4 C5          	push bc
+0204   20A5 DB 86       	in a,(keyport)
+0205   20A7             
+0206   20A7             ; SC-1 keyboard routine. Ensures only one keypress at a time and loop doesn't pause
+0207   20A7             
+0208   20A7             #ifdef SC1
+0209   20A7 CB 6F       	bit 5,a		; bit 5=1 = key pressed on SC-1
+0210   20A9 20 05       	jr nz, key
+0211   20AB             #endif
+0212   20AB             
+0213   20AB             
+0214   20AB~            #ifdef TEC1
+0215   20AB~            	res 5,a
+0216   20AB~            	bit 6,a		; bit 6=0 = key pressed on TEC1 (Requires jmon resistor mod)
+0217   20AB~            	jr nz,nokey
+0218   20AB~            	set 5,a
+0219   20AB~            	jr key
+0220   20AB             #endif
+0221   20AB             
+0222   20AB             nokey:
+0223   20AB 32 59 21    	ld (keyflag),a
+0224   20AE 18 11       	jr bail
+0225   20B0             
+0226   20B0             
+0227   20B0 E6 3F       key:	and 3fh		; mask off top bits
+0228   20B2 47          	ld b,a		; backup value
+0229   20B3 3A 59 21    	ld a,(keyflag)	; did we already see it pressed?
+0230   20B6 CB 6F       	bit 5,a
+0231   20B8 20 07       	jr nz, bail
+0232   20BA             
+0233   20BA 78          	ld a,b		; restore value and save; set flag
+0234   20BB 32 59 21    	ld (keyflag),a
+0235   20BE 32 5A 21    	ld (keyval),a
+0236   20C1             
+0237   20C1             bail:
+0238   20C1 C1          	pop bc
+0239   20C2 F1          	pop af
+0240   20C3 C9          	ret
+0241   20C4             
+0242   20C4             
+0243   20C4             ; ----------------------------------------------------------------------------
+0244   20C4             ; General purpose delay loop
+0245   20C4             ; ----------------------------------------------------------------------------
+0246   20C4 F5          ldelay:	push af
+0247   20C5 D5          	push de
+0248   20C6 11 00 80    	ld de,08000h
+0249   20C9             
+0250   20C9 1B          linner:	dec de
+0251   20CA 7A          	ld a,d
+0252   20CB B3          	or e
+0253   20CC 20 FB       	jr nz, linner
+0254   20CE             
+0255   20CE D1          	pop de
+0256   20CF F1          	pop af
+0257   20D0 C9          	ret
+0258   20D1             
+0259   20D1             
+0260   20D1             ; ----------------------------------------------------------------------------
+0261   20D1             ; make the i2c bus active
+0262   20D1             ; ----------------------------------------------------------------------------
+0263   20D1             
+0264   20D1             i2c_start:
+0265   20D1 F5          	push af
+0266   20D2 C5          	push bc
+0267   20D3 0E 40       	ld c,i2cport
+0268   20D5 3E 02       	ld a,02h	; SCL 1, SDA 0 = start
+0269   20D7 ED 79       	out (c),a
+0270   20D9 3E 00       	ld a,00h
+0271   20DB ED 79       	out (c),a	; SCL 0, SDA 0 = bus idle active
+0272   20DD C1          	pop bc
+0273   20DE F1          	pop af
+0274   20DF C9          	ret
+0275   20E0             
+0276   20E0             
+0277   20E0             ; ----------------------------------------------------------------------------
+0278   20E0             ; return i2c bus to idle
+0279   20E0             ; ----------------------------------------------------------------------------
+0280   20E0             
+0281   20E0             i2c_stop:
+0282   20E0 F5          	push af
+0283   20E1 C5          	push bc
+0284   20E2 0E 40       	ld c,i2cport
+0285   20E4 3E 01       	ld a,01h	; SCL 0, SDA 1 = stop
+0286   20E6 ED 79       	out (c),a
+0287   20E8 3E 03       	ld a,03h
+0288   20EA ED 79       	out (c),a	; SCL 1, SDA 1 = bus idle inactive
+0289   20EC C1          	pop bc
+0290   20ED F1          	pop af
+0291   20EE C9          	ret
+0292   20EF             
+0293   20EF             
+0294   20EF             ; ----------------------------------------------------------------------------
+0295   20EF             ; transmit a byte on the i2c bus
+0296   20EF             ;
+0297   20EF             ; enter  d = byte to send
+0298   20EF             ; return d = result
+0299   20EF             ; ----------------------------------------------------------------------------
+0300   20EF             
+0301   20EF             i2c_txbyte:
+0302   20EF F5          	push af
+0303   20F0 C5          	push bc
+0304   20F1             
+0305   20F1 0E 40       	ld c,i2cport
+0306   20F3 06 08       	ld b,8		; 8 bits
+0307   20F5             
+0308   20F5             txbyte1:
+0309   20F5 3E 00       	ld a,00h	; prep CL=low, data = ?
+0310   20F7 CB 02       	rlc d		; set CF = data
+0311   20F9 8F          	adc a,a		; set bit 0 to our data
+0312   20FA ED 79       	out (c),a	; SDA=data, SCL = 0
+0313   20FC             
+0314   20FC CB CF       	set 1,a		; Pulse SCL high
+0315   20FE ED 79       	out (c),a
+0316   2100 CB 8F       	res 1,a		; and SCL low again
+0317   2102 ED 79       	out (c),a
+0318   2104             
+0319   2104 05          	dec b
+0320   2105 20 EE       	jr nz, txbyte1
+0321   2107             
+0322   2107             ; get ACK since we did a set address command -- if the device is there we should get an answer bit = 0
+0323   2107             
+0324   2107 3E 03       	ld a,03h	; SET SCL = 1 (leave data high == bus free for response)
+0325   2109 ED 79       	out (c),a
+0326   210B ED 78       	in a,(c)	;get result; 0 = response received
+0327   210D 57          	ld d,a		; store d=result
+0328   210E 3E 01       	ld a,01h	; SCL = 0, SDA = 1
+0329   2110 ED 79       	out (c),a
+0330   2112             
+0331   2112             ; d holds our result, should be a 0-bit if an ACK received
+0332   2112             
+0333   2112 C1          	pop bc
+0334   2113 F1          	pop af
+0335   2114 C9          	ret
+0336   2115             
+0337   2115             
+0338   2115             ; ----------------------------------------------------------------------------
+0339   2115             ; Utility routine to scan the internal 7-seg displays
+0340   2115             ; Borrowed from Craig Jones SC-1 monitor
+0341   2115             ; ----------------------------------------------------------------------------
+0342   2115             
+0343   2115             scan_7seg:
+0344   2115 F5          	push af
+0345   2116 C5          	push bc
+0346   2117 E5          	push hl
+0347   2118             
+0348   2118             outerloop:
+0349   2118 0E 20       	ld c,020h
+0350   211A 21 5D 21    	ld hl,disp_buff
+0351   211D             
+0352   211D             scanloop:
+0353   211D 7E          	ld a,(hl)	; output value
+0354   211E CD 41 21    	call conv7seg
+0355   2121 D3 84       	out (disseg),a
+0356   2123 79          	ld a,c		; turn on display
+0357   2124 D3 85       	out (disscan),a
+0358   2126 06 C0       	ld b,0c0h
+0359   2128 10 FE       on:	djnz on
+0360   212A             
+0361   212A 3E 00       	ld a,00h	; turn off display
+0362   212C D3 85       	out (disscan),a
+0363   212E 06 20       	ld b,20h
+0364   2130 10 FE       off:	djnz off
+0365   2132             
+0366   2132 23          	inc hl
+0367   2133 CB 09       	rrc c
+0368   2135 30 E6       	jr nc,scanloop
+0369   2137             
+0370   2137 3E 00       	ld a,00h	; turn off displays
+0371   2139 D3 84       	out (disseg),a
+0372   213B D3 85       	out (disscan),a
+0373   213D             
+0374   213D E1          	pop hl
+0375   213E C1          	pop bc
+0376   213F F1          	pop af
+0377   2140 C9          	ret
+0378   2141             
+0379   2141             ; converts a decimal value in register A to a 7-seg value of that digit
+0380   2141             ; returns A with which segs to light up
+0381   2141             
+0382   2141             conv7seg:
+0383   2141 C5          	push bc		; this is really a lookup table fetch that allows
+0384   2142 E5          	push hl		; for memory wrapping of the lower byte
+0385   2143             
+0386   2143 FE FF       	cp 0ffh		; blank? don't light up blanks
+0387   2145 20 04       	jr nz, cont
+0388   2147 3E 00       	ld a,00h
+0389   2149 18 0A       	jr ex
+0390   214B             
+0391   214B 21 63 21    cont:	ld hl, segs	; list of 0-9 digits which segs to light for each
+0392   214E E6 0F       	and 0fh		; ensure a is in a valid range
+0393   2150 4F          	ld c,a		; put into lwr half of bc
+0394   2151 06 00       	ld b,00h	; upper half is 0
+0395   2153 09          	add hl,bc	; 16-bit add
+0396   2154 7E          	ld a,(hl)	; fetch value from memory
+0397   2155             
+0398   2155 E1          ex:	pop hl
+0399   2156 C1          	pop bc
+0400   2157 C9          	ret
+0401   2158             
+0402   2158             
+0403   2158             ; ----------------------------------------------------------------------------
+0404   2158             ;	data, variables, etc.
+0405   2158             ; ----------------------------------------------------------------------------
+0406   2158             
+0407   2158 00          mode:	.db 00h
+0408   2159             
+0409   2159 00          keyflag	.db 00h
+0410   215A 00          keyval	.db 00h
+0411   215B             
+0412   215B 00          i2caddr	.db 00h
+0413   215C             
+0414   215C 00          found	.db 00h
+0415   215D             
+0416   215D             
+0417   215D             disp_buff:
+0418   215D FF FF FF FF 	.db 0ffh, 0ffh, 0ffh, 0ffh, 0ffh ,0ffh
+0418   2161 FF FF 
+0419   2163             
+0420   2163             
+0421   2163             #ifdef SC1
+0422   2163             segs:
+0423   2163 3F          	.db 3fh
+0424   2164 06          	.db 06h
+0425   2165 5B          	.db 5bh
+0426   2166 4F          	.db 4fh
+0427   2167 66          	.db 66h
+0428   2168 6D          	.db 6dh
+0429   2169 7D          	.db 7dh
+0430   216A 07          	.db 07h
+0431   216B 7F          	.db 7fh
+0432   216C 6F          	.db 6fh
+0433   216D 77          	.db 77h
+0434   216E 7C          	.db 7ch
+0435   216F 39          	.db 39h
+0436   2170 5E          	.db 5eh
+0437   2171 79          	.db 79h
+0438   2172 71          	.db 71h
+0439   2173             
+0440   2173             #endif
+0441   2173             
+0442   2173~            #ifdef TEC1
+0443   2173~            segs:
+0444   2173~            	.db 0ebh
+0445   2173~            	.db 028h
+0446   2173~            	.db 0cdh
+0447   2173~            	.db 0adh
+0448   2173~            	.db 02eh
+0449   2173~            	.db 0a7h
+0450   2173~            	.db 0e7h
+0451   2173~            	.db 029h
+0452   2173~            	.db 0efh
+0453   2173~            	.db 02fh
+0454   2173~            	.db 06fh
+0455   2173~            	.db 0e6h
+0456   2173~            	.db 0c3h
+0457   2173~            	.db 0ech
+0458   2173~            	.db 0c7h
+0459   2173~            	.db 047h
+0460   2173~            
+0461   2173             #endif
+0462   2173             
+0463   2173             
+0464   2173             ; ----------------------------------------------------------------------------
+0465   2173             ; end of our code and data, end of program. goodbye!
+0466   2173             ; ----------------------------------------------------------------------------
+0467   2173             
+0468   2173             	.end
+tasm: Number of errors = 0
