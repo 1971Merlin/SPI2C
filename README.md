@@ -10,3 +10,6 @@ Please see https://github.com/tec1group for information on the TEC computer.
 **i2c bus scan.asm** scans the entire i2c bus and displays the address of any detected i2c device on the 7-seg displays. press any key to display the next device. FFh displayed means 'no devices found'.
 
 **5110.asm** displays an image on an SPI bus based 'Nokia 5510' or PCD8544 display, i.e. a standard 84x48 monochrome LCD.
+
+**Game of Life 5110.asm** Game of Life is a cellular automation program developed in 1970. https://en.wikipedia.org/wiki/Conway%27s_Game_of_Life It is a popular routine to reproduce an many computing platforms, as the algorithm is quite simple and memory etc. requirements are also fairly minimal. In this version we use the SPI2C board and the Nokia 5110 LCD display as the output device. The program can be compiled with either a random or a fixed pattern starting point.
+
