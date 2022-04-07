@@ -1,0 +1,347 @@
+0001   0000             ; ----------------------------------------------------------------------------
+0002   0000             ;
+0003   0000             ;	Maze maker for TEC SPI2C board with Nokia 5110 LCD
+0004   0000             ;
+0005   0000             ;	Designed to compile for the TEC-1 or SC-1 as the target machine
+0006   0000             ;
+0007   0000             ;	Assemble with TASM using the command line options -80 -g0
+0008   0000             ;
+0009   0000             ;	Copyright (C) 2022, Craig Hart. Distributed under the GPLv3 license
+0010   0000             ;
+0011   0000             ;	https://github.com/1971Merlin/SPI2C
+0012   0000             ;
+0013   0000             ; ----------------------------------------------------------------------------
+0014   0000             
+0015   0000             
+0016   0000             
+0017   0000             ; ----------------------------------------------------------------------------
+0018   0000             ; Our display buffer is an array of 504 bytes (84*48)/8 = 504 with each bit
+0019   0000             ; representing one pixel.
+0020   0000             ; byte 0 is the top left of the disply, bit 0 = the pixel at 0,0. bit 1 =
+0021   0000             ; the pixel at 0,1, bit 2 = pixel at 0,2, etc. i.e. each byte is a vertical
+0022   0000             ; column of 8 pixels. 84 bytes to a 'row' 8 pixels high, 6 rows.
+0023   0000             ;
+0024   0000             ; Our maze symbols are 8x8, meaning 6 rows of 10 symbols, with 4 pixels left
+0025   0000             ; over not used at the edge. This is simply convenient mathematically and
+0026   0000             ; makes our code easier. We could do other size symbols but this would be
+0027   0000             ; more difficult because a single symbol could overlap two bytes, meaning the
+0028   0000             ; code would need to be more complex in terms of manipulating the buffer.
+0029   0000             ; ----------------------------------------------------------------------------
+0030   0000             
+0031   0000             
+0032   0000             ; ----------------------------------------------------------------------------
+0033   0000             ; conditional defines - set the target machine platform
+0034   0000             ; ----------------------------------------------------------------------------
+0035   0000             
+0036   0000             
+0037   0000             ; using spi2c's onboard 74ls138 IO ports
+0038   0000             spiport	.equ 42h
+0039   0000             
+0040   0000             ; start address for SC-1 code. change to 0900h for TEC-1
+0041   2000             	.org 2000h
+0042   2000             
+0043   2000             
+0044   2000             ; ----------------------------------------------------------------------------
+0045   2000             ; hardware initialization code starts here
+0046   2000             ; ----------------------------------------------------------------------------
+0047   2000             
+0048   2000             ; reset spi bus to idle state
+0049   2000 0E 42       	ld c,spiport	; reset CS = 1
+0050   2002 3E FF       	ld a,0ffh	; Raise CS
+0051   2004 ED 79       	out (c),a
+0052   2006             
+0053   2006             
+0054   2006             ; write init to the 5110 display
+0055   2006             
+0056   2006 1E 21       	ld e,21h		; complex mode
+0057   2008 16 00       	ld d,00h
+0058   200A CD 1F 21    	call spi_wr
+0059   200D             
+0060   200D 1E B9       	ld e,0b9h		; set vOP
+0061   200F 16 00       	ld d,00h
+0062   2011 CD 1F 21    	call spi_wr
+0063   2014             
+0064   2014 1E 04       	ld e,04h		; temp coeficcient
+0065   2016 16 00       	ld d,00h
+0066   2018 CD 1F 21    	call spi_wr
+0067   201B             
+0068   201B 1E 14       	ld e,14h		; lcd bias
+0069   201D 16 00       	ld d,00h
+0070   201F CD 1F 21    	call spi_wr
+0071   2022             
+0072   2022             
+0073   2022 21 00 00    	ld hl,0			; start at top of screen
+0074   2025 22 3D 23    	ld (buffptr),hl
+0075   2028             
+0076   2028             
+0077   2028             ; first clear buffer to all zeros
+0078   2028             
+0079   2028 01 F7 01    	ld bc,503		; n-1
+0080   202B 21 45 21    	ld hl,buffa
+0081   202E 11 45 21    	ld de,buffa
+0082   2031 13          	inc de
+0083   2032 36 00       	ld (hl),0		; zero fill
+0084   2034 ED B0       	ldir
+0085   2036             
+0086   2036             
+0087   2036             ; ----------------------------------------------------------------------------
+0088   2036             ; main program loop
+0089   2036             ; ----------------------------------------------------------------------------
+0090   2036             
+0091   2036             
+0092   2036             mainloop:
+0093   2036             
+0094   2036             ; write buffer to display
+0095   2036             ; setup LCD
+0096   2036             
+0097   2036 1E 20       	ld e,20h		; simple mode
+0098   2038 16 00       	ld d,00h
+0099   203A CD 1F 21    	call spi_wr
+0100   203D             
+0101   203D 1E 40       	ld e,40h		; Y = 0
+0102   203F 16 00       	ld d,00h
+0103   2041 CD 1F 21    	call spi_wr
+0104   2044             
+0105   2044 1E 80       	ld e,80h		; X = 0
+0106   2046 16 00       	ld d,00h
+0107   2048 CD 1F 21    	call spi_wr
+0108   204B             
+0109   204B 1E 0C       	ld e,0ch		; normal mode
+0110   204D 16 00       	ld d,00h
+0111   204F CD 1F 21    	call spi_wr
+0112   2052             
+0113   2052             ; Send pixels to 5110 display from buffer a
+0114   2052 01 F8 01    	ld bc,504
+0115   2055 21 45 21    	ld hl,buffa
+0116   2058             
+0117   2058 7E          fillcd:	ld a,(HL)
+0118   2059 5F          	ld e,a
+0119   205A 16 08       	ld d,08h
+0120   205C CD 1F 21    	call spi_wr
+0121   205F             
+0122   205F 23          	inc hl
+0123   2060 0B          	dec bc
+0124   2061             
+0125   2061 78          	ld a,b
+0126   2062 B1          	or c
+0127   2063 20 F3       	jr nz, fillcd
+0128   2065             
+0129   2065             
+0130   2065             
+0131   2065             disloop:
+0132   2065 2A 3D 23    	ld hl,(buffptr)			; copy a maze symbol to buffer
+0133   2068 01 45 21    	ld bc,buffa
+0134   206B 09          	add hl,bc
+0135   206C E5          	push hl
+0136   206D D1          	pop de
+0137   206E             
+0138   206E CD ED 20    	call getrandom			; pick a random symbol
+0139   2071 E6 01       	and 1				; bitmask it odd/even decides
+0140   2073 28 05       	jr z,charb
+0141   2075             
+0142   2075 21 41 23    chara:	ld hl,mazea
+0143   2078 18 03       	jr mcopy
+0144   207A             
+0145   207A 21 49 23    charb:	ld hl,mazeb
+0146   207D             
+0147   207D 01 08 00    mcopy:	ld bc,0008			; copy new symbol to buffer
+0148   2080 ED B0       	ldir
+0149   2082             
+0150   2082             
+0151   2082 2A 3D 23    cont:	ld hl,(buffptr)			; move up one character space
+0152   2085 01 08 00    	ld bc,0008
+0153   2088 09          	add hl,bc
+0154   2089 22 3D 23    	ld (buffptr),hl
+0155   208C             
+0156   208C             
+0157   208C             
+0158   208C             ; bounds checking bottom of screen
+0159   208C 11 F4 01    bot:	ld de,500
+0160   208F 2A 3D 23    	ld hl,(buffptr)
+0161   2092 B7          	or a
+0162   2093 ED 52       	sbc hl,de
+0163   2095 30 03       	jr nc, eop			; end of buffer?
+0164   2097 C3 A6 20    	jp eolchk
+0165   209A             
+0166   209A CD FF 20    eop:	call scroll			; if so,scroll the buffer
+0167   209D             
+0168   209D 21 A4 01    	ld hl,420
+0169   20A0 22 3D 23    	ld (buffptr),hl			; and jump back to start of row 6
+0170   20A3             
+0171   20A3 C3 36 20    	jp mainloop
+0172   20A6             
+0173   20A6             
+0174   20A6             
+0175   20A6             ; bounds checking end of row
+0176   20A6             
+0177   20A6 2A 3D 23    eolchk:	ld hl,(buffptr)
+0178   20A9 B7          	or a
+0179   20AA 11 50 00    	ld de,80
+0180   20AD ED 52       	sbc hl,de
+0181   20AF 28 2F       	jr z, eol
+0182   20B1             
+0183   20B1 2A 3D 23    	ld hl,(buffptr)
+0184   20B4 B7          	or a
+0185   20B5 11 A4 00    	ld de,164
+0186   20B8 ED 52       	sbc hl,de
+0187   20BA 28 24       	jr z, eol
+0188   20BC             
+0189   20BC 2A 3D 23    	ld hl,(buffptr)
+0190   20BF B7          	or a
+0191   20C0 11 F8 00    	ld de,248
+0192   20C3 ED 52       	sbc hl,de
+0193   20C5 28 19       	jr z, eol
+0194   20C7             
+0195   20C7 2A 3D 23    	ld hl,(buffptr)
+0196   20CA B7          	or a
+0197   20CB 11 4C 01    	ld de,332
+0198   20CE ED 52       	sbc hl,de
+0199   20D0 28 0E       	jr z, eol
+0200   20D2             
+0201   20D2 2A 3D 23    	ld hl,(buffptr)
+0202   20D5 B7          	or a
+0203   20D6 11 A0 01    	ld de,416
+0204   20D9 ED 52       	sbc hl,de
+0205   20DB 28 03       	jr z, eol
+0206   20DD             
+0207   20DD             
+0208   20DD C3 36 20    	jp mainloop				; move on, not end of row
+0209   20E0             
+0210   20E0             
+0211   20E0             
+0212   20E0 2A 3D 23    eol:	ld hl,(buffptr)			; add 4 if end of line 8*10=80 pixels
+0213   20E3 01 04 00    	ld bc,0004
+0214   20E6 09          	add hl,bc
+0215   20E7 22 3D 23    	ld (buffptr),hl
+0216   20EA             
+0217   20EA             
+0218   20EA C3 36 20    	jp mainloop
+0219   20ED             
+0220   20ED             
+0221   20ED             ; ----------------------------------------------------------------------------
+0222   20ED             ; Generate a random number 0<=255 return it in A register
+0223   20ED             ; ----------------------------------------------------------------------------
+0224   20ED             
+0225   20ED             getrandom:
+0226   20ED E5          	push hl
+0227   20EE D5          	push de
+0228   20EF 2A 3F 23    	ld hl,(rndData)
+0229   20F2 ED 5F       	ld a,r
+0230   20F4 57          	ld d,a
+0231   20F5 5E          	ld e,(hl)
+0232   20F6 19          	add hl,de
+0233   20F7 85          	add a,l
+0234   20F8 AC          	xor h
+0235   20F9 22 3F 23    	ld (rndData),hl
+0236   20FC D1          	pop de
+0237   20FD E1          	pop hl
+0238   20FE C9          	ret
+0239   20FF             
+0240   20FF             
+0241   20FF             ; ----------------------------------------------------------------------------
+0242   20FF             ; Scroll the display buffer
+0243   20FF             ; ----------------------------------------------------------------------------
+0244   20FF             
+0245   20FF C5          scroll:	push bc
+0246   2100 D5          	push de
+0247   2101 E5          	push hl
+0248   2102             
+0249   2102             
+0250   2102 21 99 21    	ld hl,buffa+84			; 84 bytes per 'line'
+0251   2105 11 45 21    	ld de,buffa
+0252   2108 01 A4 01    	ld bc,84*5			; 5 'lines'
+0253   210B ED B0       	ldir
+0254   210D             
+0255   210D             
+0256   210D 01 53 00    	ld bc,83			; one line -1 due pre-seed
+0257   2110 21 E9 22    	ld hl,buffa+420
+0258   2113 11 E9 22    	ld de,buffa+420
+0259   2116 13          	inc de
+0260   2117 36 00       	ld (hl),0			; zero fill line 6
+0261   2119 ED B0       	ldir
+0262   211B             
+0263   211B             
+0264   211B E1          	pop hl
+0265   211C D1          	pop de
+0266   211D C1          	pop bc
+0267   211E             
+0268   211E C9          	ret
+0269   211F             
+0270   211F             
+0271   211F             ; ----------------------------------------------------------------------------
+0272   211F             ; write COMMAND to the SPI bus
+0273   211F             ;
+0274   211F             ; d = command/data 00 = commandh, 08 = data
+0275   211F             ; e = data byte
+0276   211F             ; ----------------------------------------------------------------------------
+0277   211F             
+0278   211F             spi_wr:
+0279   211F F5          	push af
+0280   2120 C5          	push bc
+0281   2121 D5          	push de
+0282   2122             
+0283   2122 0E 42       	ld c,spiport
+0284   2124 06 08       	ld b,8		; 8 BITS
+0285   2126             
+0286   2126 3E E4       nbit2:	ld a,0e4h	; chip select,command low
+0287   2128 82          	add a,d		; add in the command/data register
+0288   2129 CB 7B       	bit 7,e
+0289   212B 28 02       	jr z, no
+0290   212D CB C7       	set 0,a
+0291   212F             
+0292   212F ED 79       no:	out (c),a
+0293   2131 CB CF       	set 1,a		; set CLK
+0294   2133 ED 79       	out (c),a
+0295   2135 CB 8F       	res 1,a		; clear CLK
+0296   2137 ED 79       	out (c),a
+0297   2139             
+0298   2139 CB 03       	rlc e		; next bit
+0299   213B             
+0300   213B 10 E9       	djnz nbit2
+0301   213D             
+0302   213D 3E F4       	ld a,0f4h	; raise CS
+0303   213F ED 79       	out (c),a
+0304   2141             
+0305   2141 D1          	pop de
+0306   2142 C1          	pop bc
+0307   2143 F1          	pop af
+0308   2144 C9          	ret
+0309   2145             
+0310   2145             
+0311   2145             
+0312   2145             ; ----------------------------------------------------------------------------
+0313   2145             ;	data, variables, etc.
+0314   2145             ; ----------------------------------------------------------------------------
+0315   2145             
+0316   2145             buffa	.ds 504		; (84*48 pixels)/8 pixels per byte
+0317   233D             
+0318   233D 00 00       buffptr	.dw 0
+0319   233F             
+0320   233F 00 00       rndData	.dw 0
+0321   2341             
+0322   2341             
+0323   2341 01          mazea	.db 01h
+0324   2342 02          	.db 02h
+0325   2343 04          	.db 04h
+0326   2344 08          	.db 08h
+0327   2345 10          	.db 10h
+0328   2346 20          	.db 20h
+0329   2347 40          	.db 40h
+0330   2348 80          	.db 80h
+0331   2349             
+0332   2349 80          mazeb	.db 80h
+0333   234A 40          	.db 40h
+0334   234B 20          	.db 20h
+0335   234C 10          	.db 10h
+0336   234D 08          	.db 08h
+0337   234E 04          	.db 04h
+0338   234F 02          	.db 02h
+0339   2350 01          	.db 01h
+0340   2351             
+0341   2351             
+0342   2351             ; ----------------------------------------------------------------------------
+0343   2351             ; end of our code and data, end of program. goodbye!
+0344   2351             ; ----------------------------------------------------------------------------
+0345   2351             
+0346   2351             	.end
+tasm: Number of errors = 0
