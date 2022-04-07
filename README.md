@@ -13,3 +13,4 @@ Please see https://github.com/tec1group for information on the TEC computer.
 
 **Game of Life 5110.asm** Game of Life is a cellular automation program developed in 1970. https://en.wikipedia.org/wiki/Conway%27s_Game_of_Life It is a popular routine to reproduce an many computing platforms, as the algorithm is quite simple and memory etc. requirements are also fairly minimal. In this version we use the SPI2C board and the Nokia 5110 LCD display as the output device. The program can be compiled with either a random or a fixed pattern starting point.
 
+**maze 5100.asm** A simple maze program, made famous by the well known Commodore 64 basic code 10 PRINT CHR$(205.5+RND(1)); : GOTO 10. Outputs to the 84x48 "Nokia 5110" LCD display.
