@@ -2,4 +2,6 @@ This is a practical example of putting the SPI2C board to good use. It allows th
 
 Sample code is provided to read in keystrokes or mouse data, and putputs it to the serial terminal.
 
-![Connector Schematic](Connector Schematic.jpg)
+The following diagram shows how the connectors should be wired. Note that only *ONE* device can be connected at a time - you cannot have both a keyboard and a mouse both connected at the same time.
+
+![Connector Schematic](Connector%20Schematic.jpg)
