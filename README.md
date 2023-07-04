@@ -1,9 +1,13 @@
 # SPI2C
-SPI2C interface hardware and software for the TEC-1 and SC-1 family of Z80 single board computers
+SPI2C interface hardware and software for the TEC-1 and SC-1 family of Z80 single board computers.
+
+The full [construction article](SPI%20and%20I2C%20Article%20Final.pdf) PDF describes the SPI2C board in detail.
 
 Please see https://github.com/tec1group for information on the TEC computer.
 
 **spi2c_library.asm** contains the current code libraries for interfacing with the SPI2C board. Note the IO ports you choose to use will need to be edite in this file, if you're building for the TEC-1 hardware. The settings are correct for use with the SC-1 as provided.
+
+PS2 Keyboard or Mouse contains sample code and circuit for hooking up a regular IBM PC compatible PS/2 or AT keyboard, or, a PS/2 mouse to the SPI2C.
 
 -------------------------------------------------
 
