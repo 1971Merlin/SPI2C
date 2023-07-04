@@ -2,11 +2,6 @@
 ;
 ; AT Keyboard support on SPI2C
 ;
-;
-; written for the Soutern Cross Monitor version 1.8 or later
-;
-; outputs keystrokes to the serial terminal
-;
 ; -----------------------------------------------------------------------------
 
 
@@ -32,10 +27,14 @@ krst:	ld d,0edh			; set leds state
 
 
 
+;debug:	call keydump
+;	jr debug
+
 
 mloop:	call getkey
 	cp 00h
 	jr z,mloop
+
 
 	call scan2asc
 	cp 0ffh
@@ -48,15 +47,39 @@ mloop:	call getkey
 
 
 
+; ------------------------------------------------------
+; keydump - waits for a keypress
+;
+; prints scan code to serial terminal
+; ------------------------------------------------------
+
+keydump:
+
+	call i2c_ATrx
+
+	ld hl,buff
+	ld c,BYTASC
+	rst 30h
+
+	ld hl,buff
+	ld c,SNDMSG
+	rst 30h
+
+	ret
+
+
+
+
 
 ; ------------------------------------------------------
 ; getkey - waits for a keypress
 ;
 ; returns with scancode in A or 00 = no valid key
+;
+; carry set if special key, otherwise cleared
 ; ------------------------------------------------------
 
 getkey:
-
  	call i2c_ATrx		; wait for a keystroke
 
 	cp 0f0h			; release?
@@ -73,6 +96,7 @@ getkey:
 	cp 58h			; caps lock?
 	jr z,capstog
 
+	or a			; clear carry
 	ret			; return normal scan code
 
 
@@ -89,13 +113,13 @@ release:
 	ret
 
 
-; e0h xxxh
+; e0h, xxh
 special:
 	call i2c_ATrx
 	cp 0f0h
 	jr z, release
 
-	xor a			; we ignoring special keys for now
+	scf			; set carry & return special key scan code
 	ret
 
 shifton:
@@ -138,8 +162,21 @@ capstog:
 ; ------------------------------------------------------
 
 
-scan2asc:	ld hl,keytable
+scan2asc:	ld e,a
+		jr nc,norkey
+
+;special keys
+		ld hl,specialtable
 		ld e,a
+		jr ascloop
+
+norkey:		ld hl,keytable
+
+		ld a,(shifted)
+		cp 1
+		jr z,ascloop
+
+		ld hl,shtable
 
 
 ascloop:	ld a,(hl)
@@ -150,22 +187,19 @@ ascloop:	ld a,(hl)
 		cp e
 		jr z, fixx
 
-		inc hl			; skip mapped value
+		inc hl
 		jr ascloop		; try next map
-
 
 fixx:		ld a,(hl)
 
+		cp 07bh			; ignore { | } ~ and DEL
+		ret nc
 
 ; now fix case
-		cp 07fh			; ignore backspace
-		ret z
-
 		cp 61h			; letters?
 		ret c
 
 		ld e,a
-
 
 ; use xor logic!!
 
@@ -181,6 +215,8 @@ toupper:	sub 020h
 		ret
 
 
+
+; for letters, or when shift is not pressed
 
 keytable:	.db 01ch,'a'
 		.db 032h,'b'
@@ -236,6 +272,46 @@ keytable:	.db 01ch,'a'
 		.db 07bh,'-'
 		.db 079h,'+'
 
+; nonprinting keys
+		.db 029h,' '	; Space
+		.db 05ah,0dh	; Enter
+		.db 066h,7fh	; bkspc
+		.db 00dh,09h	; Tab
+		.db 076h,1bh	; Esc
+		.db 052h,27h	; Apostrophe
+
+
+
+; for when shift is pressed
+
+shtable:	.db 045h,')'
+		.db 016h,'!'
+		.db 01eh,'@'
+		.db 026h,'#'
+		.db 025h,'$'
+		.db 02eh,'%'
+		.db 036h,'^'
+		.db 03dh,'&'
+		.db 03eh,'*'
+		.db 046h,'('
+
+		.db 00eh,'~'
+		.db 04eh,'_'
+		.db 055h,'+'
+		.db 05dh,'|'
+		.db 054h,'{'
+		.db 05bh,'}'
+		.db 04ch,':'
+		.db 041h,'<'
+		.db 049h,'>'
+		.db 04ah,'?'
+		.db 052h,22h	; Quotation mark
+
+
+; keypad keys
+		.db 07ch,'*'
+		.db 07bh,'-'
+		.db 079h,'+'
 
 ; nonprinting keys
 		.db 029h,' '	; Space
@@ -243,15 +319,18 @@ keytable:	.db 01ch,'a'
 		.db 066h,7fh	; bkspc
 		.db 00dh,09h	; Tab
 		.db 076h,1bh	; Esc
-		.db 052h,27h	; apostrophe
-
 
 		.db 0ffh	; end of table
 
+; E0 xx codes
+specialtable:	.db 04ah,'/'	; numeric slash
+		.db 05ah,0dh	; numeric Enter
+		.db 0ffh
 
 shifted:	.db 01h
 caps:		.db 01h
 
+buff		.db "00 ",0
 
 #include "spi2c_library.asm"
 
