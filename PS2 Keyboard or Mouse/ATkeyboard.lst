@@ -1,0 +1,837 @@
+0001   0000             ; -----------------------------------------------------------------------------
+0002   0000             ;
+0003   0000             ; AT Keyboard support on SPI2C
+0004   0000             ;
+0005   0000             ; -----------------------------------------------------------------------------
+0006   0000             
+0007   0000             
+0008   0000             #include "C:/Users/user/OneDrive/TEC-1/SC-1/TMON/scm18_include.asm"
+0001+  0000             ;--------------------------------------------
+0002+  0000             ; S O U T H E R N   C R O S S   M O N I T O R
+0003+  0000             ;--------------------------------------------
+0004+  0000             ;
+0005+  0000             ;  MONITOR DEFINITIONS FILE 
+0006+  0000             ;  Version 1.8
+0007+  0000             ;
+0008+  0000             ; WRITTEN BY CRAIG R. S. JONES
+0009+  0000             ; MELBOURNE, AUSTRALIA.
+0010+  0000             ;
+0011+  0000             ;---------------
+0012+  0000             ; RAM MEMORY MAP
+0013+  0000             ;---------------
+0014+  0000             BOTRAM	.EQU	2000H	;BOTTOM OF SRAM
+0015+  0000             TOPRAM	.EQU	3FFFH	;TOP OF SRAM
+0016+  0000             ;
+0017+  0000             VARBLS	.EQU	TOPRAM-0FFH	;MONITOR VARIABLES
+0018+  0000             BUFFER	.EQU	VARBLS-0100H	;GENERAL PURPOSE BUFFER AREA
+0019+  0000             ISTACK	.EQU	BUFFER - 0200H	;INITIAL MONITOR STACK
+0020+  0000             ;
+0021+  0000             RAMEND	.EQU	ISTACK-0400H	;END OF USER RAM
+0022+  0000             RAMSRT	.EQU	BOTRAM	;START OF USER RAM
+0023+  0000             ;
+0024+  0000             ; BIT BANG BAUD RATE CONSTANTS
+0025+  0000             ;
+0026+  0000             B300	.EQU	0220H	;300 BAUD
+0027+  0000             B1200	.EQU	0080H	;1200 BAUD
+0028+  0000             B2400	.EQU	003FH	;2400 BAUD
+0029+  0000             B4800	.EQU	001BH	;4800 BAUD
+0030+  0000             B9600	.EQU	000BH	;9600 BAUD
+0031+  0000             ;
+0032+  0000             ; KEY CODES
+0033+  0000             ;
+0034+  0000             KEYFN	.EQU	10H	;FN OR GO KEY
+0035+  0000             KEYAD	.EQU	11H	;ADDRESS KEY
+0036+  0000             KEYINC	.EQU	12H	;PLUS KEY
+0037+  0000             KEYDEC	.EQU	13H	;MINUS KEY
+0038+  0000             ;-------------------------
+0039+  0000             ; MONITOR GLOBAL VARIABLES
+0040+  0000             ;-------------------------
+0041+  0000             ;
+0042+  3F00             	.ORG	VARBLS
+0043+  3F00             ;
+0044+  3F00             ;SERIAL MONITOR VARIABLES
+0045+  3F00             ;
+0046+  3F00             VARIDX	.BLOCK	16	;RESERVE SOME SPACE FOR INDEXED VARIABLES (SEE INTELH)
+0047+  3F10             SPSAVE	.BLOCK	2	;SAVE THE STACK POINTER
+0048+  3F12             ADDR	.BLOCK	2	;THE ADDRESS
+0049+  3F14             DATA	.BLOCK	1	;THE DATA
+0050+  3F15             ;
+0051+  3F15             FUNTBL	.BLOCK	 2	;FN TABLE ADDRESS
+0052+  3F17             ;
+0053+  3F17             ; DALLAS SMARTWATCH REGISTERS
+0054+  3F17             ;
+0055+  3F17             CALMDE	.BLOCK	2	;CALENDAR MODE
+0056+  3F19             SWREG0	.BLOCK	1	;10THS, 100THS
+0057+  3F1A             SWREG1	.BLOCK	1	;SECONDS
+0058+  3F1B             SWREG2	.BLOCK	1	;MINUTES
+0059+  3F1C             SWREG3	.BLOCK	1	;HOURS
+0060+  3F1D             SWREG4	.BLOCK	1	;DAY
+0061+  3F1E             SWREG5	.BLOCK	1	;DATE
+0062+  3F1F             SWREG6	.BLOCK	1	;MONTH
+0063+  3F20             SWREG7	.BLOCK	1	;YEAR
+0064+  3F21             ;
+0065+  3F21             BAUD	.BLOCK	2	;BIT BANG BAUD RATE
+0066+  3F23             KEYTIM	.BLOCK	2	;BEEP DELAY
+0067+  3F25             SPTEMP	.BLOCK	2	;TEMP SYSTEM CALL SP
+0068+  3F27             ;
+0069+  3F27             ; BLOCK FUNCTIONS
+0070+  3F27             ;
+0071+  3F27             COUNT	.BLOCK	2	;NUMBER OF BYTES TO MOVE
+0072+  3F29             BLKSRT	.BLOCK	2	;BLOCK START ADDRESS
+0073+  3F2B             BLKEND	.BLOCK	2	;BLOCK END ADDRESS
+0074+  3F2D             BLKDST	.BLOCK	2	;DESTINATION ADDRESS
+0075+  3F2F             ;
+0076+  3F2F             FUNJMP	.BLOCK	2	;FN FN KEY JUMP ADDRESS
+0077+  3F31             ;
+0078+  3F31             ; DISPLAY SCAN REGISTERS
+0079+  3F31             ;
+0080+  3F31             DISBUF	.BLOCK	6	;DISPLAY BUFFER
+0081+  3F37             ONTIM	.BLOCK	1	;DISPLAY SCAN ON TIME
+0082+  3F38             OFTIM	.BLOCK	1	;DISPLAY SCAN OFF TIME
+0083+  3F39             ;
+0084+  3F39             ; MONITOR VARIABLES
+0085+  3F39             ;
+0086+  3F39             MODE	.BLOCK	2	;DISPLAY MODE
+0087+  3F3B             ADRESS	.BLOCK	2	;USER ADDRESS
+0088+  3F3D             KEYDEL	.BLOCK	2	;AUTO INCREMENT DELAY
+0089+  3F3F             ;
+0090+  3F3F             ; TEMPORARY REGISTER STORAGE
+0091+  3F3F             ;
+0092+  3F3F             REGPNT	.BLOCK	2	;REGISTER POINTER
+0093+  3F41             TMPPC	.BLOCK	2	;PROGRAM COUNTER
+0094+  3F43             TMPAF	.BLOCK	2	;ACCUMULATOR,FLAG
+0095+  3F45             TMPBC	.BLOCK	2	;BC REGISTER PAIR
+0096+  3F47             TMPDE	.BLOCK	2	;DE REGISTER PAIR
+0097+  3F49             TMPHL	.BLOCK	2	;HL REGISTER PAIR
+0098+  3F4B             TMPIX	.BLOCK	2	;INDEX REGISTER X
+0099+  3F4D             TMPIY	.BLOCK	2	;INDEX REGISTER Y
+0100+  3F4F             TMPSP	.BLOCK	2	;STACK POINTER
+0101+  3F51             ;
+0102+  3F51             ; RESTART JUMP TABLE AND HARWARE TEST
+0103+  3F51             ;
+0104+  3F51             RST08	.BLOCK	2	;RESTART 08H JUMP
+0105+  3F53             RST10	.BLOCK	2	;RESTART 10H JUMP
+0106+  3F55             RST18	.BLOCK	2	;RESTART 18H JUMP
+0107+  3F57             RST20	.BLOCK	2	;RESTART 20H JUMP
+0108+  3F59             RST28	.BLOCK	2	;RESTART 28H JUMP
+0109+  3F5B             RST38	.BLOCK	2	;INT INTERRUPT JUMP
+0110+  3F5D             RST66	.BLOCK	2	;NMI INTERRUPT JUMP
+0111+  3F5F             RAMSUM	.BLOCK	1	;USER RAM CHECKSUM
+0112+  3F60             DALLAS	.BLOCK	1	;RAM TEST LOCATION
+0113+  3F61             SYSERR	.BLOCK	2	;SYSTEM CALL ERROR JUMP
+0114+  3F63             ;--------------------
+0115+  3F63             ; SYSTEM CALL NUMBERS
+0116+  3F63             ;--------------------
+0117+  3F63             ;
+0118+  3F63             ;  LD   C,SYSTEM CALL NUMBER
+0119+  3F63             ;  RST  30H
+0120+  3F63             ;
+0121+  3F63             MAIN	.EQU	0	;RESTART MONITOR
+0122+  3F63             VERS	.EQU	1	;RETURNS MONITOR VERSION
+0123+  3F63             DISADD	.EQU	2	;ADDRESS -> DISPLAY BUFFER
+0124+  3F63             DISBYT	.EQU	3	;DATA -> DISPLAY BUFFER
+0125+  3F63             CLRBUF	.EQU	4	;CLEAR DISPLAY BUFFER
+0126+  3F63             SCAND	.EQU	5	;SCAN DISPLAY
+0127+  3F63             CONBYT	.EQU	6	;BYTE -> DISPLAY CODE
+0128+  3F63             CONVHI	.EQU	7	;HI NYBBLE -> DISPLAY CODE
+0129+  3F63             CONVLO	.EQU	8	;LO NYBBLE - > DISPLAY CODE
+0130+  3F63             SKEYIN	.EQU	9	;SCAN DISPLAY UNTIL KEY PRESS
+0131+  3F63             SKEYRL	.EQU	10	;SCAN DISPLAY UNTIL KEY RELEASE
+0132+  3F63             KEYIN	.EQU	11	;WAIT FOR KEY PRESS
+0133+  3F63             KEYREL	.EQU	12	;WAIT FOR KEY RELEASE
+0134+  3F63             MENU	.EQU	13	;SELECT ENTRY FROM MENU
+0135+  3F63             CHKSUM	.EQU	14	;CALCULATE CHECKSUM
+0136+  3F63             MUL16	.EQU	15	;16 BIT MULTIPLY
+0137+  3F63             RAND	.EQU	16	;GENERATE RANDOM NUMBER
+0138+  3F63             INDEXB	.EQU	17	;INDEX INTO BYTE TABLE
+0139+  3F63             INDEXW	.EQU	18	;INDEX INTO WORD TABLE
+0140+  3F63             MUSIC	.EQU	19	;PLAY MUSIC TABLE
+0141+  3F63             TONE	.EQU	20	;PLAY A NOTE
+0142+  3F63             BEEP	.EQU	21	;KEY ENTRY BEEP
+0143+  3F63             SKATE	.EQU	22	;SCAN 8X8 DISPLAY
+0144+  3F63             TXDATA	.EQU	23	;TRANSMIT SERIAL BYTE
+0145+  3F63             RXDATA	.EQU	24	;RECEIVE SERIAL BYTE
+0146+  3F63             ASCHEX	.EQU	25	;ASCII CODE -> HEX
+0147+  3F63             WWATCH	.EQU	26	;WRITE TO SMART WATCH
+0148+  3F63             RWATCH	.EQU	27	;READ FROM SMART WATCH
+0149+  3F63             ONESEC	.EQU	28	;ONE SECOND DELAY USING SMARTWATCH
+0150+  3F63             RLSTEP	.EQU	29	;RELAY S.EQUENCER
+0151+  3F63             DELONE	.EQU	30	;ONE SECOND DELAY LOOP
+0152+  3F63             SCANKEY .EQU	31	;SCAN THE KEYBOARD
+0153+  3F63             INTELH	.EQU	32	;RECEIVE INTEL HEX FILE
+0154+  3F63             SPLIT	.EQU	33	;SEPARATE A BYTE INTO NYBBLES
+0155+  3F63             SNDMSG	.EQU	34	;SND ZERO TERMINATED STRING TO SERIAL PORT
+0156+  3F63             BITASC	.EQU	35	;CONVERT A BYTE INTO AN ASCII STRING OF ONES AND ZEROES
+0157+  3F63             WRDASC	.EQU	36	;CONVERT A WORD TO ASCII
+0158+  3F63             BYTASC	.EQU	37	;CONVERT A BYTE TO ASCII
+0159+  3F63             NYBASC	.EQU	38	;CONVERT A NYBBLE TO ASCII
+0160+  3F63             PCBTYP	.EQU	39	;RETURNS BOARD TYPE, SC OR TEC-1F
+0161+  3F63             PRNTSZ	.EQU	40	;INLINE SERIAL PRINT STRING
+0162+  3F63             KBDTYP	.EQU	41	;RETURNS KEYBOARD TYPE
+0163+  3F63             UPDATE	.EQU	42  ;UPDATE DISPLAY AND MODE DECIMAL POINT SEGMENTS
+0164+  3F63             VARRAM	.EQU	43	;RETURN BASE VARIABLE ADDRESS
+0165+  3F63             SERINI	.EQU	44	;INITIALISE BIT BANG SERIAL PORT
+0166+  3F63             SCBUG	.EQU	45	;SCBUG SERIAL MONITOR
+0167+  3F63             
+0168+  3F63             ;END OF INCLUDE FILE
+0009   3F63             
+0010   3F63             
+0011   2000             	.org	2000h
+0012   2000             
+0013   2000 0E 2C       	ld c,SERINI
+0014   2002 F7          	rst 30h
+0015   2003             
+0016   2003 CD 16 21    	call i2c_init			; setup port
+0017   2006             
+0018   2006 3E 01       	ld a,1				; set basic state
+0019   2008 32 14 21    	ld (shifted),a
+0020   200B 32 15 21    	ld (caps),a
+0021   200E             
+0022   200E             
+0023   200E 16 ED       krst:	ld d,0edh			; set leds state
+0024   2010 CD AA 21    	call i2c_ATtx
+0025   2013 16 00       	ld d,0				; kb leds bits all off
+0026   2015 CD AA 21    	call i2c_ATtx
+0027   2018             
+0028   2018             
+0029   2018             
+0030   2018             
+0031   2018 CD 2B 20    mloop:	call getkey
+0032   201B FE 00       	cp 00h
+0033   201D 28 F9       	jr z,mloop
+0034   201F             
+0035   201F CD 81 20    	call scan2asc
+0036   2022 FE FF       	cp 0ffh
+0037   2024 28 F2       	jr z,mloop
+0038   2026             
+0039   2026 0E 17       	ld c,TXDATA
+0040   2028 F7          	rst 30h
+0041   2029             
+0042   2029 18 ED       	jr mloop
+0043   202B             
+0044   202B             
+0045   202B             
+0046   202B             
+0047   202B             ; ------------------------------------------------------
+0048   202B             ; getkey - waits for a keypress
+0049   202B             ;
+0050   202B             ; returns with scancode in A or 00 = no valid key
+0051   202B             ; ------------------------------------------------------
+0052   202B             
+0053   202B             getkey:
+0054   202B             
+0055   202B CD 81 21     	call i2c_ATrx		; wait for a keystroke
+0056   202E             
+0057   202E FE F0       	cp 0f0h			; release?
+0058   2030 28 11       	jr z, release
+0059   2032             
+0060   2032 FE E0       	cp 0e0h
+0061   2034 28 1A       	jr z, special		; special key?
+0062   2036             
+0063   2036 FE 12       	cp 12h			; shift?
+0064   2038 28 1F       	jr z,shifton
+0065   203A FE 59       	cp 59h
+0066   203C 28 1B       	jr z,shifton
+0067   203E             
+0068   203E FE 58       	cp 58h			; caps lock?
+0069   2040 28 25       	jr z,capstog
+0070   2042             
+0071   2042 C9          	ret			; return normal scan code
+0072   2043             
+0073   2043             
+0074   2043             ; f0h, xxh
+0075   2043             release:
+0076   2043 CD 81 21    	call i2c_ATrx		; get but ignore (most) keys
+0077   2046             
+0078   2046 FE 12       	cp 12h
+0079   2048 28 16       	jr z,shiftoff
+0080   204A FE 59       	cp 59h
+0081   204C 28 12       	jr z,shiftoff
+0082   204E             
+0083   204E AF          	xor a
+0084   204F C9          	ret
+0085   2050             
+0086   2050             
+0087   2050             ; e0h xxxh
+0088   2050             special:
+0089   2050 CD 81 21    	call i2c_ATrx
+0090   2053 FE F0       	cp 0f0h
+0091   2055 28 EC       	jr z, release
+0092   2057             
+0093   2057 AF          	xor a			; we ignoring special keys for now
+0094   2058 C9          	ret
+0095   2059             
+0096   2059             shifton:
+0097   2059 3E 02       	ld a,2
+0098   205B 32 14 21    	ld (shifted),a
+0099   205E AF          	xor a
+0100   205F C9          	ret
+0101   2060             
+0102   2060             shiftoff:
+0103   2060 3E 01       	ld a,1
+0104   2062 32 14 21    	ld (shifted),a
+0105   2065 AF          	xor a
+0106   2066 C9          	ret
+0107   2067             
+0108   2067             capstog:
+0109   2067 3A 15 21    	ld a,(caps)			; flip status bit
+0110   206A EE 03       	xor 3
+0111   206C 32 15 21    	ld (caps),a
+0112   206F             
+0113   206F 16 ED       	ld d,0edh			; set leds state
+0114   2071 CD AA 21    	call i2c_ATtx
+0115   2074             
+0116   2074 3A 15 21    	ld a,(caps)
+0117   2077 CB 27       	sla a
+0118   2079 E6 04       	and 04h
+0119   207B 57          	ld d,a				; kb leds bits
+0120   207C CD AA 21    	call i2c_ATtx
+0121   207F             
+0122   207F AF          	xor a
+0123   2080 C9          	ret
+0124   2081             
+0125   2081             
+0126   2081             
+0127   2081             ; ------------------------------------------------------
+0128   2081             ; scan code to ASCII conversion
+0129   2081             ;
+0130   2081             ;
+0131   2081             ; in: A = scancode
+0132   2081             ; out A = translated ASCII value or FFh if not translatable
+0133   2081             ; ------------------------------------------------------
+0134   2081             
+0135   2081             
+0136   2081 21 A5 20    scan2asc:	ld hl,keytable
+0137   2084 5F          		ld e,a
+0138   2085             
+0139   2085             
+0140   2085 7E          ascloop:	ld a,(hl)
+0141   2086 23          		inc hl
+0142   2087 FE FF       		cp 0ffh			; end of table?
+0143   2089 C8          		ret z
+0144   208A             
+0145   208A BB          		cp e
+0146   208B 28 03       		jr z, fixx
+0147   208D             
+0148   208D 23          		inc hl			; skip mapped value
+0149   208E 18 F5       		jr ascloop		; try next map
+0150   2090             
+0151   2090             
+0152   2090 7E          fixx:		ld a,(hl)
+0153   2091             
+0154   2091             
+0155   2091             ; now fix case
+0156   2091 FE 7F       		cp 07fh			; ignore backspace
+0157   2093 C8          		ret z
+0158   2094             
+0159   2094 FE 61       		cp 61h			; letters?
+0160   2096 D8          		ret c
+0161   2097             
+0162   2097 5F          		ld e,a
+0163   2098             
+0164   2098             
+0165   2098             ; use xor logic!!
+0166   2098             
+0167   2098 3A 14 21    		ld a,(shifted)
+0168   209B 47          		ld b,a
+0169   209C 3A 15 21    		ld a,(caps)
+0170   209F A8          		xor b
+0171   20A0 7B          		ld a,e
+0172   20A1 C8          		ret z
+0173   20A2             
+0174   20A2             
+0175   20A2 D6 20       toupper:	sub 020h
+0176   20A4 C9          		ret
+0177   20A5             
+0178   20A5             
+0179   20A5             
+0180   20A5 1C 61       keytable:	.db 01ch,'a'
+0181   20A7 32 62       		.db 032h,'b'
+0182   20A9 21 63       		.db 021h,'c'
+0183   20AB 23 64       		.db 023h,'d'
+0184   20AD 24 65       		.db 024h,'e'
+0185   20AF 2B 66       		.db 02bh,'f'
+0186   20B1 34 67       		.db 034h,'g'
+0187   20B3 33 68       		.db 033h,'h'
+0188   20B5 43 69       		.db 043h,'i'
+0189   20B7 3B 6A       		.db 03bh,'j'
+0190   20B9 42 6B       		.db 042h,'k'
+0191   20BB 4B 6C       		.db 04bh,'l'
+0192   20BD 3A 6D       		.db 03ah,'m'
+0193   20BF 31 6E       		.db 031h,'n'
+0194   20C1 44 6F       		.db 044h,'o'
+0195   20C3 4D 70       		.db 04dh,'p'
+0196   20C5 15 71       		.db 015h,'q'
+0197   20C7 2D 72       		.db 02dh,'r'
+0198   20C9 1B 73       		.db 01bh,'s'
+0199   20CB 2C 74       		.db 02ch,'t'
+0200   20CD 3C 75       		.db 03ch,'u'
+0201   20CF 2A 76       		.db 02ah,'v'
+0202   20D1 1D 77       		.db 01dh,'w'
+0203   20D3 22 78       		.db 022h,'x'
+0204   20D5 35 79       		.db 035h,'y'
+0205   20D7 1A 7A       		.db 01ah,'z'
+0206   20D9             
+0207   20D9 45 30       		.db 045h,'0'
+0208   20DB 16 31       		.db 016h,'1'
+0209   20DD 1E 32       		.db 01eh,'2'
+0210   20DF 26 33       		.db 026h,'3'
+0211   20E1 25 34       		.db 025h,'4'
+0212   20E3 2E 35       		.db 02eh,'5'
+0213   20E5 36 36       		.db 036h,'6'
+0214   20E7 3D 37       		.db 03dh,'7'
+0215   20E9 3E 38       		.db 03eh,'8'
+0216   20EB 46 39       		.db 046h,'9'
+0217   20ED             
+0218   20ED 0E 60       		.db 00eh,'`'
+0219   20EF 4E 2D       		.db 04eh,'-'
+0220   20F1 55 3D       		.db 055h,'='
+0221   20F3 5D 5C       		.db 05dh,'\'
+0222   20F5 54 5B       		.db 054h,'['
+0223   20F7 5B 5D       		.db 05bh,']'
+0224   20F9 4C 3B       		.db 04ch,';'
+0225   20FB 41 2C       		.db 041h,','
+0226   20FD 49 2E       		.db 049h,'.'
+0227   20FF 4A 2F       		.db 04ah,'/'
+0228   2101             
+0229   2101             ; keypad keys
+0230   2101 7C 2A       		.db 07ch,'*'
+0231   2103 7B 2D       		.db 07bh,'-'
+0232   2105 79 2B       		.db 079h,'+'
+0233   2107             
+0234   2107             
+0235   2107             ; nonprinting keys
+0236   2107 29 20       		.db 029h,' '	; Space
+0237   2109 5A 0D       		.db 05ah,0dh	; Enter
+0238   210B 66 7F       		.db 066h,7fh	; bkspc
+0239   210D 0D 09       		.db 00dh,09h	; Tab
+0240   210F 76 1B       		.db 076h,1bh	; Esc
+0241   2111 52 27       		.db 052h,27h	; apostrophe
+0242   2113             
+0243   2113             
+0244   2113 FF          		.db 0ffh	; end of table
+0245   2114             
+0246   2114             
+0247   2114 01          shifted:	.db 01h
+0248   2115 01          caps:		.db 01h
+0249   2116             
+0250   2116             
+0251   2116             #include "C:/Users/User/OneDrive/TEC-1/SC-1/IOboard/spi2c_library.asm"
+0001+  2116             ; ----------------------------------------------------------------------------
+0002+  2116             ; 	Libraries for SPI2C board.
+0003+  2116             ;
+0004+  2116             ;	Copyright (C) 2023, Craig Hart. Distributed under the GPLv3 license.
+0005+  2116             ;
+0006+  2116             ;	https://github.com/1971Merlin/SPI2C
+0007+  2116             ;
+0008+  2116             ; ----------------------------------------------------------------------------
+0009+  2116             
+0010+  2116             ; ----------------------------------------------------------------------------
+0011+  2116             ;
+0012+  2116             ; Common Parameters
+0013+  2116             ;
+0014+  2116             ; the user should change the ports according to the hardware in use
+0015+  2116             ;
+0016+  2116             ; ----------------------------------------------------------------------------
+0017+  2116             
+0018+  2116             
+0019+  2116             i2cport	.equ 40h	; IO port our I2C "controller" lives on
+0020+  2116             			; 40h for SC-1 using the onboard 74HC138
+0021+  2116             			; user selected for TEC-1
+0022+  2116             
+0023+  2116             spiport	.equ 42h	; IO port our SPI "controller" lives on
+0024+  2116             			; 42h for SC-1 using the onboard 74HC138
+0025+  2116             			; user selected for TEC-1
+0026+  2116             
+0027+  2116             	
+0028+  2116             spics1	.equ 0fbh
+0029+  2116             spics2	.equ 0efh
+0030+  2116             spics3	.equ 0dfh
+0031+  2116             spics4	.equ 0bfh
+0032+  2116             spics5	.equ 07fh
+0033+  2116             
+0034+  2116             
+0035+  2116             
+0036+  2116             ; ----------------------------------------------------------------------------
+0037+  2116             ; I2C Routines
+0038+  2116             ; ----------------------------------------------------------------------------
+0039+  2116             
+0040+  2116             i2cidle	.equ 03h
+0041+  2116             
+0042+  2116             i2c_init:
+0043+  2116 F5          	push af
+0044+  2117 3E 03       	ld a,i2cidle	; idle state = SCL and SDA both high
+0045+  2119 D3 40       	out (i2cport),a
+0046+  211B F1          	pop af
+0047+  211C C9          	ret
+0048+  211D             
+0049+  211D             ; ----------------------------------------------------------------------------
+0050+  211D             ; Routine to make the i2c bus active
+0051+  211D             ; ----------------------------------------------------------------------------
+0052+  211D             
+0053+  211D             i2c_start:
+0054+  211D F5          	push af
+0055+  211E 3E 02       	ld a,02h	; SCL 1, SDA 0 = start
+0056+  2120 D3 40       	out (i2cport),a
+0057+  2122 3E 00       	ld a,00h
+0058+  2124 D3 40       	out (i2cport),a	; SCL 0, SDA 0 = bus idle active
+0059+  2126 F1          	pop af
+0060+  2127 C9          	ret
+0061+  2128             
+0062+  2128             ; ----------------------------------------------------------------------------
+0063+  2128             ; Routine to return i2c bus to idle
+0064+  2128             ; ----------------------------------------------------------------------------
+0065+  2128             
+0066+  2128             i2c_stop:
+0067+  2128 F5          	push af
+0068+  2129 3E 01       	ld a,01h	; SCL 0, SDA 1 = stop
+0069+  212B D3 40       	out (i2cport),a
+0070+  212D 3E 03       	ld a,03h
+0071+  212F D3 40       	out (i2cport),a	; SCL 1, SDA 1 = bus idle inactive
+0072+  2131 F1          	pop af
+0073+  2132 C9          	ret
+0074+  2133             
+0075+  2133             ; ----------------------------------------------------------------------------
+0076+  2133             ; Routine to transmit a byte on the i2c bus
+0077+  2133             ;
+0078+  2133             ; enter  d = byte to send
+0079+  2133             ; return d bit 0 = result; 0 = accepted/OK; 1 = ignored/no device
+0080+  2133             ; ----------------------------------------------------------------------------
+0081+  2133             
+0082+  2133             i2c_txbyte:
+0083+  2133 F5          	push af
+0084+  2134 C5          	push bc
+0085+  2135             
+0086+  2135 06 08       	ld b,8		; 8 bits
+0087+  2137             
+0088+  2137             txbyte1:
+0089+  2137 3E 00       	ld a,00h	; prep CL=low, data = ?
+0090+  2139 CB 02       	rlc d		; set CF = data
+0091+  213B 8F          	adc a,a		; set bit 0 to our data
+0092+  213C D3 40       	out (i2cport),a	; SDA=data, SCL = 0
+0093+  213E             
+0094+  213E CB CF       	set 1,a		; Pulse SCL high
+0095+  2140 D3 40       	out (i2cport),a
+0096+  2142 CB 8F       	res 1,a		; and SCL low again
+0097+  2144 D3 40       	out (i2cport),a
+0098+  2146             
+0099+  2146 05          	dec b
+0100+  2147 20 EE       	jr nz, txbyte1
+0101+  2149             
+0102+  2149             ; get ACK since we did a set address command --
+0103+  2149             ; if the device is there we should get an answer bit = 0
+0104+  2149             
+0105+  2149 3E 03       rxack:	ld a,03h	; SET SCL = 1 (leave data high = bus free for response)
+0106+  214B D3 40       	out (i2cport),a
+0107+  214D DB 40       	in a,(i2cport)	;get result; 0 = response received
+0108+  214F 57          	ld d,a		; store d=result
+0109+  2150 3E 01       	ld a,01h	; SCL = 0, SDA = 1
+0110+  2152 D3 40       	out (i2cport),a
+0111+  2154             
+0112+  2154             ; d holds our result, bit zro should be a 0 if an ACK received
+0113+  2154             
+0114+  2154 C1          	pop bc
+0115+  2155 F1          	pop af
+0116+  2156 C9          	ret
+0117+  2157             
+0118+  2157             ; ----------------------------------------------------------------------------
+0119+  2157             ; Routine to receive a byte from the i2c bus
+0120+  2157             ;
+0121+  2157             ; return d = result
+0122+  2157             ; ----------------------------------------------------------------------------
+0123+  2157             
+0124+  2157             i2c_rxbyte:
+0125+  2157 F5          	push af
+0126+  2158 C5          	push bc
+0127+  2159             
+0128+  2159 06 08       	ld b,8		; 8 bits
+0129+  215B 16 00       	ld d,00h	; (our data to be read)
+0130+  215D             
+0131+  215D             rxbyte1:
+0132+  215D 3E 01       	ld a,01h	; prep SCL=low, data = high (tristate output)
+0133+  215F D3 40       	out (i2cport),a	; SDA=data, SCL = 0
+0134+  2161             
+0135+  2161 3E 03       	ld a,03h	; SCL = 1, SDA = 1
+0136+  2163 D3 40       	out (i2cport),a
+0137+  2165             
+0138+  2165 DB 40       	in a,(i2cport)	; read bit (they send us SDA)
+0139+  2167 CB 0F       	rrc a		; store into CF
+0140+  2169 CB 12       	rl d		; and read into d
+0141+  216B             
+0142+  216B 3E 01       	ld a,01h
+0143+  216D D3 40       	out (i2cport),a	; SCL = 0, SDA = 1 (tristate output)
+0144+  216F             
+0145+  216F 05          	dec b
+0146+  2170 20 EB       	jr nz, rxbyte1
+0147+  2172             
+0148+  2172             ; send ACK since we read a byte
+0149+  2172             
+0150+  2172 3E 01       txack:	ld a,01h	; Setup ACK pulse SCL=0 with SDA=1
+0151+  2174 D3 40       	out (i2cport),a
+0152+  2176 3E 03       	ld a,03h	; Send ACK SCL = 1, SDA = 1
+0153+  2178 D3 40       	out (i2cport),a
+0154+  217A 3E 01       	ld a,01h	; lower SCL; idle ready state
+0155+  217C D3 40       	out (i2cport),a
+0156+  217E             
+0157+  217E C1          	pop bc
+0158+  217F F1          	pop af
+0159+  2180 C9          	ret
+0160+  2181             
+0161+  2181             
+0162+  2181             ; ----------------------------------------------------------------------------
+0163+  2181             ; Routine to receive an AT keyboard byte from the i2c bus
+0164+  2181             ;
+0165+  2181             ; return a = result
+0166+  2181             ; ----------------------------------------------------------------------------
+0167+  2181             
+0168+  2181             i2c_ATrx:
+0169+  2181             
+0170+  2181 CD 96 21    	call rxAT	; get the start bit and discard it
+0171+  2184             
+0172+  2184 06 08       	ld b,8		; 8 bits
+0173+  2186 16 00       	ld d,00h	; (our data to be read)
+0174+  2188             
+0175+  2188 CD 96 21    ATbits:	call rxAT	; get 8 data bits
+0176+  218B 10 FB       	djnz ATbits
+0177+  218D             
+0178+  218D 4A          	ld c,d		; backup for later
+0179+  218E             
+0180+  218E CD 96 21    	call rxAT	; get parity bit and discard it
+0181+  2191 CD 96 21    	call rxAT	; get stop bit and discard it
+0182+  2194             
+0183+  2194 79          	ld a,c		; restore value
+0184+  2195             
+0185+  2195 C9          	ret
+0186+  2196             
+0187+  2196             
+0188+  2196             
+0189+  2196             
+0190+  2196             rxAT:
+0191+  2196             
+0192+  2196 DB 42       rxAT1:	in a,(spiport)	; read
+0193+  2198 E6 08       	and 08h
+0194+  219A C2 96 21    	jp nz,rxAT1	; wait for clk to go low
+0195+  219D             
+0196+  219D DB 40       	in a,(i2cport)	; read bit 0 == data
+0197+  219F 0F          	rrca		; bit 0 into carry
+0198+  21A0 CB 1A       	rr d		; carry into d bit 7, shifting right each time
+0199+  21A2             
+0200+  21A2 DB 42       rxAT2:	in a,(spiport)	; wait for clock to go high
+0201+  21A4 E6 08       	and 08h
+0202+  21A6 CA A2 21    	jp z,rxAT2
+0203+  21A9             
+0204+  21A9 C9          	ret
+0205+  21AA             
+0206+  21AA             
+0207+  21AA             
+0208+  21AA             
+0209+  21AA             
+0210+  21AA             ; ----------------------------------------------------------------------------
+0211+  21AA             ; Routine to transmit an AT keyboard byte from the i2c bus
+0212+  21AA             ;
+0213+  21AA             ; d = byte to transmit
+0214+  21AA             ; ----------------------------------------------------------------------------
+0215+  21AA             
+0216+  21AA             i2c_ATtx:
+0217+  21AA             
+0218+  21AA 0E 00       	ld c,0
+0219+  21AC             
+0220+  21AC 7A          	ld a,d
+0221+  21AD B7          	or a			; set parity bit
+0222+  21AE E2 B3 21    	jp po,noparity
+0223+  21B1             
+0224+  21B1 0E 01       	ld c,1
+0225+  21B3             
+0226+  21B3             noparity:
+0227+  21B3 3E 01       	ld a,01
+0228+  21B5 D3 40       	out (i2cport),a		; CLK low (bit 1) data high (bit 0)
+0229+  21B7             
+0230+  21B7 06 09       	ld b,09h			; delay 100us
+0231+  21B9 10 FE       grabck:	djnz grabck
+0232+  21BB             
+0233+  21BB 3E 00       	ld a,00			; both low
+0234+  21BD D3 40       	out (i2cport),a
+0235+  21BF             	
+0236+  21BF 00          	nop
+0237+  21C0 00          	nop
+0238+  21C1 00          	nop
+0239+  21C2 00          	nop
+0240+  21C3             
+0241+  21C3 3E 02       	ld a,02		; CLK high data low; start bit
+0242+  21C5 D3 40       	out (i2cport),a
+0243+  21C7             
+0244+  21C7 CD E7 21    	call txAT1	; wait ack.
+0245+  21CA             
+0246+  21CA             
+0247+  21CA 06 08       	ld b,8		; now send 8 data bits
+0248+  21CC             	
+0249+  21CC CD E2 21    ATbit2:	call txAT
+0250+  21CF CB 3A       	srl d
+0251+  21D1 10 F9       	djnz ATbit2
+0252+  21D3             
+0253+  21D3 51          	ld d,c		; send parity  bit
+0254+  21D4 CD E2 21    	call txAT
+0255+  21D7             
+0256+  21D7 3E 03       	ld a,03		; back to idle
+0257+  21D9 D3 40       	out (i2cport),a
+0258+  21DB             
+0259+  21DB             
+0260+  21DB CD 96 21    	call rxAT
+0261+  21DE CD 96 21    	call rxAT
+0262+  21E1             
+0263+  21E1             ;	ld b,0fh	; small delay
+0264+  21E1             ;ignore:	djnz ignore
+0265+  21E1             	
+0266+  21E1             	
+0267+  21E1 C9          	ret
+0268+  21E2             
+0269+  21E2             
+0270+  21E2 7A          txAT:	ld a,d
+0271+  21E3 F6 02       	or 2		; keep CLK high our side, set data bit =b0
+0272+  21E5 D3 40       	out (i2cport),a	; set bit 0 == data
+0273+  21E7             
+0274+  21E7 DB 42       txAT1:	in a,(spiport)
+0275+  21E9 E6 08       	and 08h
+0276+  21EB CA E7 21    	jp z,txAT1	; wait for clk to go high
+0277+  21EE             
+0278+  21EE             
+0279+  21EE             	
+0280+  21EE DB 42       txAT2:	in a,(spiport)	; wait for clock to go low
+0281+  21F0 E6 08       	and 08h
+0282+  21F2 C2 EE 21    	jp nz,txAT2
+0283+  21F5             
+0284+  21F5 C9          	ret
+0285+  21F6             	
+0286+  21F6 00          parity	.db 0
+0287+  21F7             
+0288+  21F7             ;Bring the Clock line low for at least 100 microseconds.
+0289+  21F7             ;Bring the Data line low.
+0290+  21F7             ;Release the Clock line.
+0291+  21F7             ;Wait for the device to bring the Clock line low.
+0292+  21F7             ;Set/reset the Data line to send the first data bit.
+0293+  21F7             ;Wait for the device to bring Clock high.
+0294+  21F7             ;Wait for the device to bring Clock low.
+0295+  21F7             ;Repeat steps 5-7 for the other seven data bits and the parity bit.
+0296+  21F7             ;Release the Data line.
+0297+  21F7             ;Wait for the device to bring Data low.
+0298+  21F7             ;Wait for the device to bring Clock low.
+0299+  21F7             ;Wait for the device to release Data and Clock.
+0300+  21F7             
+0301+  21F7             
+0302+  21F7             ; ----------------------------------------------------------------------------
+0303+  21F7             ; SPI Routines
+0304+  21F7             ; ----------------------------------------------------------------------------
+0305+  21F7             
+0306+  21F7             spiidle	.equ 0f4h	; Idle state
+0307+  21F7             
+0308+  21F7             ; SPI port bits
+0309+  21F7             ;
+0310+  21F7             ; bit 0 - MOSI/MISO
+0311+  21F7             ; bit 1 - CLK
+0312+  21F7             ; bit 2 - CS1
+0313+  21F7             ; bit 3 - D/C
+0314+  21F7             ; bit 4 - CS2
+0315+  21F7             ; bit 5 - CS3
+0316+  21F7             ; bit 6 - CS4
+0317+  21F7             ; bit 7 - CS5
+0318+  21F7             
+0319+  21F7             ; ----------------------------------------------------------------------------
+0320+  21F7             ; SPI initialization code starts here; call once at start of code
+0321+  21F7             ;
+0322+  21F7             ; idle state == 1111 0100  === MOSI, D/C and CLK low, CSx all high
+0323+  21F7             ; ----------------------------------------------------------------------------
+0324+  21F7             
+0325+  21F7             spi_init:
+0326+  21F7 F5          	push af
+0327+  21F8 3E F4       	ld a,spiidle	; Set idle state
+0328+  21FA D3 42       	out (spiport),a
+0329+  21FC F1          	pop af
+0330+  21FD C9          	ret
+0331+  21FE             
+0332+  21FE             ; ----------------------------------------------------------------------------
+0333+  21FE             ; Routine to send byte to the SPI bus
+0334+  21FE             ;
+0335+  21FE             ; c = SPI CS pin required (use the spics EQUs above)
+0336+  21FE             ; d = command/data 00 = command, 08 = data
+0337+  21FE             ; e = data byte
+0338+  21FE             ;
+0339+  21FE             ; no results returned, no registers odified
+0340+  21FE             ; ----------------------------------------------------------------------------
+0341+  21FE             
+0342+  21FE F5          spi_wr:	push af
+0343+  21FF D5          	push de
+0344+  2200 CD 1B 22    	call spi_wrb
+0345+  2203 18 0F       	jr spi_done
+0346+  2205             
+0347+  2205             ; ----------------------------------------------------------------------------
+0348+  2205             ; Routine to send two bytes to the SPI bus
+0349+  2205             ;
+0350+  2205             ; c = SPI CS pin required (use the spics EQUs above)
+0351+  2205             ; d = command byte
+0352+  2205             ; e = data byte
+0353+  2205             ;
+0354+  2205             ; no results returned, no registers modified
+0355+  2205             ; ----------------------------------------------------------------------------
+0356+  2205             
+0357+  2205             spi_wrw:
+0358+  2205 F5          	push af
+0359+  2206 D5          	push de
+0360+  2207 7B          	ld a,e
+0361+  2208 5A          	ld e,d
+0362+  2209 16 08       	ld d,08h
+0363+  220B CD 1B 22    	call spi_wrb
+0364+  220E             
+0365+  220E 5F          	ld e,a
+0366+  220F 16 08       	ld d,08h
+0367+  2211 CD 1B 22    	call spi_wrb
+0368+  2214             
+0369+  2214             spi_done:	
+0370+  2214 3E F4       	ld a,spiidle	; return to idle mode
+0371+  2216 D3 42       	out (spiport),a
+0372+  2218 D1          	pop de
+0373+  2219 F1          	pop af
+0374+  221A C9          	ret
+0375+  221B             
+0376+  221B             ; ----------------------------------------------------------------------------
+0377+  221B             ; Routine to transmit one byte to the SPI bus
+0378+  221B             ;
+0379+  221B             ; c = SPI CS pin required (use the spics EQUs above)
+0380+  221B             ; d = command/data 00 = command, 08 = data
+0381+  221B             ; e = data byte
+0382+  221B             ;
+0383+  221B             ; no results returned, no registers modified
+0384+  221B             ; ----------------------------------------------------------------------------
+0385+  221B             
+0386+  221B             spi_wrb:
+0387+  221B F5          	push af
+0388+  221C C5          	push bc
+0389+  221D D5          	push de
+0390+  221E             
+0391+  221E 06 08       	ld b,8		; 8 BITS
+0392+  2220             
+0393+  2220 3E F4       nbit:	ld a,spiidle	; starting point
+0394+  2222 B2          	or d		; add in the command/data register select
+0395+  2223 A1          	and c		; add in the CS pin
+0396+  2224 CB 7B       	bit 7,e
+0397+  2226 28 02       	jr z, no
+0398+  2228 CB C7       	set 0,a
+0399+  222A             
+0400+  222A D3 42       no:	out (spiport),a
+0401+  222C CB CF       	set 1,a		; set CLK
+0402+  222E D3 42       	out (spiport),a
+0403+  2230 CB 8F       	res 1,a		; clear CLK
+0404+  2232 D3 42       	out (spiport),a
+0405+  2234 CB 03       	rlc e		; next bit
+0406+  2236 10 E8       	djnz nbit
+0407+  2238             
+0408+  2238 D1          	pop de
+0409+  2239 C1          	pop bc
+0410+  223A F1          	pop af
+0411+  223B C9          	ret
+0252   223C             
+0253   223C             
+0254   223C             
+0255   223C             
+0256   223C             	.end
+0257   223C             
+tasm: Number of errors = 0
